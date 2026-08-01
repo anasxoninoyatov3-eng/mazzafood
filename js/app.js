@@ -757,7 +757,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!res.ok) {
                     localFallbackOtp = String(Math.floor(1000 + Math.random() * 9000));
-                    console.log(`[OTP generated for ${phone}]: ${localFallbackOtp}`);
                     
                     // Direct Telegram fallback notify
                     try {

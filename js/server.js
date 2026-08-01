@@ -144,8 +144,6 @@ app.post('/api/send-otp', async (req, res) => {
         attempts: 0
     };
 
-    console.log(`[SMS OTP generated for ${phone}]: ${code}`);
-
     // 1. First try sending via PlayMobile.uz SMS API
     let smsResult = await sendPlayMobileSms(phone, code);
 
