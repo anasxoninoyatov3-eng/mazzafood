@@ -90,10 +90,11 @@ async function sendEskizSms(phone, code) {
     try {
         const cleanPhone = phone.replace(/[^\d]/g, ''); // 998XXXXXXXXX
         if (!eskizToken || Date.now() > eskizTokenExpires) {
-            const authRes = await axios.post('https://api.eskiz.uz/api/auth/login', {
-                email: email,
-                password: password
-            });
+            const params = new URLSearchParams();
+            params.append('email', email);
+            params.append('password', password);
+
+            const authRes = await axios.post('https://notify.eskiz.uz/api/auth/login', params);
             if (authRes.data && authRes.data.data && authRes.data.data.token) {
                 eskizToken = authRes.data.data.token;
                 eskizTokenExpires = Date.now() + 25 * 24 * 60 * 60 * 1000;
@@ -102,19 +103,20 @@ async function sendEskizSms(phone, code) {
             }
         }
 
-        const smsRes = await axios.post('https://api.eskiz.uz/api/message/sms/send', {
-            mobile_phone: cleanPhone,
-            message: `Mazza Food: Ro'yxatdan o'tish kodingiz: ${code}`,
-            from: process.env.ESKIZ_FROM || '4546',
-            callback_url: ''
-        }, {
+        const smsParams = new URLSearchParams();
+        smsParams.append('mobile_phone', cleanPhone);
+        smsParams.append('message', `Mazza Food: Ro'yxatdan o'tish kodingiz: ${code}`);
+        smsParams.append('from', process.env.ESKIZ_FROM || '4546');
+        smsParams.append('callback_url', '');
+
+        const smsRes = await axios.post('https://notify.eskiz.uz/api/message/sms/send', smsParams, {
             headers: { Authorization: `Bearer ${eskizToken}` }
         });
 
         return { ok: true, provider: 'Eskiz', data: smsRes.data };
     } catch (err) {
         console.error('Eskiz SMS Exception:', err?.response?.data || err.message);
-        return { ok: false, provider: 'Eskiz', error: err.message };
+        return { ok: false, provider: 'Eskiz', error: err?.response?.data?.message || err.message };
     }
 }
 
