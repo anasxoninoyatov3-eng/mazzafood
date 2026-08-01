@@ -1,8 +1,15 @@
+import os
 import asyncio
 from aiogram import Bot
 
-ADMIN_BOT_TOKEN = '8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE'
-ADMIN_CHAT_ID = 8283401187
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+ADMIN_BOT_TOKEN = os.getenv('ADMIN_BOT_TOKEN', '')
+ADMIN_CHAT_ID = int(os.getenv('ADMIN_CHAT_ID', '8283401187'))
 
 async def main():
     bot = Bot(token=ADMIN_BOT_TOKEN)

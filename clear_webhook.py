@@ -1,9 +1,13 @@
+import os
 import urllib.request
 
-tokens = [
-    '8633439971:AAFR1WG5SyYnpEuwMVhQMC20LVyYSB4pSjE', # Main bot
-    '8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE'  # Admin bot
-]
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+tokens = [t for t in [os.getenv('TELEGRAM_BOT_TOKEN'), os.getenv('ADMIN_BOT_TOKEN')] if t]
 
 for token in tokens:
     try:

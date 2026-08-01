@@ -67,9 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Barcha pending fikrlar (foydalanuvchi o'z tarixi uchun)
     let allReviews = JSON.parse(localStorage.getItem('mazza_all_reviews') || '[]');
 
-    // Admin bot token va chat id (review moderation uchun)
-    const REVIEW_BOT_TOKEN = '8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE';
-    const REVIEW_ADMIN_CHAT = '5377787513';
+    // Review moderation and admin settings handled via secure backend server
 
     // Currency suffix detection (default empty, will detect "so'm" if menu uses som)
     let currencySuffix = '';
@@ -758,11 +756,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!res.ok) {
                     localFallbackOtp = String(Math.floor(1000 + Math.random() * 9000));
                     
-                    // Direct Telegram fallback notify
-                    try {
-                        const tgText = encodeURIComponent(`📲 Mazza Food OTP Verifikatsiya:\nNomer: ${phone}\nKod: ${localFallbackOtp}`);
-                        fetch(`https://api.telegram.org/bot8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE/sendMessage?chat_id=8283401187&text=${tgText}`).catch(() => {});
-                    } catch (e) {}
+                    // Local fallback OTP generated
 
                     if (authMsg) {
                         authMsg.style.display = 'block';
@@ -827,10 +821,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!res.ok) {
                     localFallbackOtp = String(Math.floor(1000 + Math.random() * 9000));
-                    try {
-                        const tgText = encodeURIComponent(`📲 Mazza Food OTP Verifikatsiya:\nNomer: ${phone}\nKod: ${localFallbackOtp}`);
-                        fetch(`https://api.telegram.org/bot8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE/sendMessage?chat_id=8283401187&text=${tgText}`).catch(() => {});
-                    } catch (e) {}
+                    // Local fallback OTP generated
 
                     if (authMsg) {
                         authMsg.style.display = 'block';
@@ -1285,64 +1276,15 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Send order directly to Telegram API (works from Netlify static hosting)
+    // Send order via secure backend API endpoint (never exposes Telegram BOT_TOKEN in browser)
     async function sendOrderToBackend(order) {
-        const BOT_TOKEN = "8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE";
-        const CHAT_ID = "8283401187";
-
-        // Build plain text message (no HTML/Markdown to avoid parse errors)
-        let text = '📦 Yangi buyurtma!\n\n';
-        text += '👤 Mijoz: ' + (order.name || 'Noma\'lum') + '\n';
-        text += '📞 Telefon: ' + (order.phone || 'Noma\'lum') + '\n';
-        text += '📍 Manzil: ' + (order.address || '-') + '\n\n';
-        text += '🛒 Buyurtma tarkibi:\n';
-
         try {
-            const items = order.items || {};
-            Object.keys(items).forEach(function (k) {
-                const it = items[k];
-                text += '  ▫️ ' + it.name + ' x ' + it.qty + ' = ' + formatPrice(it.price * it.qty) + '\n';
-            });
-        } catch (e) {
-            text += '  (mahsulotlarni o\'qib bo\'lmadi)\n';
-        }
-
-        const delivery = order.delivery || {};
-        let dm = delivery.method || 'standard';
-        if (delivery.method === 'pickup') dm = 'Olib ketish';
-        if (delivery.method === 'zalda') dm = 'Zalda';
-        text += '\n🚚 Yetkazib berish: ' + dm;
-        if (delivery.fee) text += ' (' + formatPrice(delivery.fee) + ')';
-
-        const pay = order.payment === 'click' ? 'Click / Payme' : 'Naqd';
-        text += '\n💳 To\'lov turi: ' + pay;
-        text += '\n\n💰 Jami: ' + formatPrice(order.total || 0);
-
-        const d = new Date(order.ts || Date.now());
-        const pad = function (n) { return n.toString().padStart(2, '0'); };
-        text += '\n🕒 Vaqt: ' + pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear() + ', ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-
-        if (delivery.method === 'zalda') {
-            text += '\n\nbuyurtma: ichkariga\n\n@kmazzafoodbot dan';
-        } else {
-            text += '\n\n@kmazzafoodbot dan';
-        }
-
-        const url = 'https://api.telegram.org/bot' + BOT_TOKEN + '/sendMessage';
-
-        try {
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: CHAT_ID, text: text })
-            });
-            const data = await resp.json();
-            if (!data.ok) {
-                console.error('Telegram API error:', data);
-            }
-            return !!data.ok;
+            const res = await apiPost('/api/send-order', { order });
+            if (res.ok) return true;
+            const res2 = await apiPost('/api', { action: 'submit_order', order });
+            return !!(res2 && res2.ok);
         } catch (err) {
-            console.error('Fetch error sending to Telegram:', err);
+            console.error('Error submitting order to backend:', err);
             return false;
         }
     }
@@ -1490,39 +1432,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     })();
 
-    // Fikrlarni TO'G'RIDAN-TO'G'RI Telegram API orqali yuborish (backend shart emas)
+    // Send review via secure backend API endpoint (never exposes Telegram BOT_TOKEN in browser)
     async function sendReviewToTelegram(entry) {
-        const BOT_TOKEN = '8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE';
-        const CHAT_ID = '8283401187';
-
-        const stars = '⭐'.repeat(entry.rating);
-        let text = '📝 Yangi sharh (Moderatsiya)!\n\n';
-        text += '👤 Mijoz: ' + (entry.name || 'Noma\'lum') + '\n';
-        text += '⭐ Baho: ' + stars + ' (' + entry.rating + '/5)\n';
-        text += '💬 Matn: ' + (entry.text || '-') + '\n';
-        text += '🕒 Vaqt: ' + new Date(entry.ts).toLocaleString('uz-UZ') + '\n';
-
-        const url = 'https://api.telegram.org/bot' + BOT_TOKEN + '/sendMessage';
-
         try {
-            console.log('Sending review directly to Telegram...');
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: CHAT_ID,
-                    text: text
-                })
-            });
-            const data = await resp.json();
-            console.log('Telegram API response:', data);
-            if (!data.ok) {
-                console.error('Telegram API error:', data);
-            }
-            return !!data.ok;
+            const res = await apiPost('/api/reviews', entry);
+            if (res.ok) return true;
+            const res2 = await apiPost('/api', { action: 'new_review', review: entry });
+            return !!(res2 && res2.ok);
         } catch (err) {
-            console.error('Telegram fetch error:', err);
-            alert('⚠️ Telegram bilan bog\'lanib bo\'lmadi. Internet aloqasini tekshiring. Xato: ' + err.message);
+            console.error('Error submitting review to backend:', err);
             return false;
         }
     }

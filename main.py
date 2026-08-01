@@ -12,15 +12,21 @@ from aiohttp import web
 import urllib.parse
 from datetime import datetime
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
-TOKEN = '8633439971:AAFR1WG5SyYnpEuwMVhQMC20LVyYSB4pSjE'
-ADMIN_BOT_TOKEN = '8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE'
-ADMIN_CHAT_ID = 8283401187 
-SMS_API_KEY = "b84499890e0e572ffb6a7fb0952aee0d1d73254806bb183b"
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
+ADMIN_BOT_TOKEN = os.getenv('ADMIN_BOT_TOKEN', '')
+ADMIN_CHAT_ID = int(os.getenv('ADMIN_CHAT_ID', '8283401187'))
+SMS_API_KEY = os.getenv('SMS_API_KEY', '')
 
 async def send_sms_api(phone, otp):
     import aiohttp

@@ -3,6 +3,8 @@ const axios = require('axios');
 const path = require('path');
 const cors = require('cors');
 
+try { require('dotenv').config(); } catch (e) {}
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -22,10 +24,8 @@ app.post('/api/send-order', async (req, res) => {
     const { order } = req.body || {};
     if (!order || !order.name || !order.phone) return res.status(400).json({ ok: false, error: 'Missing order data' });
 
-    const BOT_TOKEN = "8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE";
-    // Agar bir nechta odamga yubormoqchi bo'lsangiz, ID larni vergul bilan ajratib yozing
-    // Masalan: ["5377787513", "9988776655"]
-    const CHAT_IDS = [8283401187]; // process.env.TELEGRAM_CHAT_IDS ? process.env.TELEGRAM_CHAT_IDS.split(',') : [];
+    const BOT_TOKEN = process.env.ADMIN_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+    const CHAT_IDS = process.env.TELEGRAM_CHAT_ID ? [process.env.TELEGRAM_CHAT_ID] : [8283401187];
 
     if (!BOT_TOKEN || CHAT_IDS.length === 0) return res.status(500).json({ ok: false, error: 'Telegram credentials not configured' });
 

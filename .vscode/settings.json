@@ -1,3 +1,7 @@
 {
-    "liveServer.settings.port": 5504
+    "liveServer.settings.port": 5504,
+    "python.defaultInterpreterPath": "C:\\Users\\Anasxon\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+    "python.analysis.extraPaths": [
+        "C:\\Users\\Anasxon\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages"
+    ]
 }
