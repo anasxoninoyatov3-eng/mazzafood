@@ -24,7 +24,7 @@ SMS_API_KEY = "b84499890e0e572ffb6a7fb0952aee0d1d73254806bb183b"
 
 async def send_sms_api(phone, otp):
     import aiohttp
-    text = f"Ideal Taxi: Tasdiqlash kodi - {otp}"
+    text = f"Mazza Food: Tasdiqlash kodi - {otp}"
     clean_phone = ''.join(filter(str.isdigit, phone))
     encoded_text = urllib.parse.quote(text)
     url = f"https://api.smsmobileapi.com/sendsms/?recipients={clean_phone}&message={encoded_text}&apikey={SMS_API_KEY}"
@@ -39,6 +39,8 @@ async def send_sms_api(phone, otp):
     except Exception as e:
         logging.error(f"Failed to send SMS: {e}")
         return False
+
+otp_store: Dict[str, Dict[str, Any]] = {}
 
 bot = Bot(token=TOKEN)
 admin_bot = Bot(token=ADMIN_BOT_TOKEN) 
@@ -373,13 +375,112 @@ async def handle_api(request):
         logging.error(f"API Error: {e}")
         return web.json_response({'ok': False, 'error': str(e)}, headers=headers)
 
+async def handle_send_otp(request):
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+    }
+    if request.method == 'OPTIONS':
+        return web.Response(headers=headers)
+    try:
+        data = await request.json()
+        phone = str(data.get('phone', '')).strip()
+        if not phone or not phone.startswith('+998') or len(phone) < 12:
+            return web.json_response({'ok': False, 'error': "Telefon raqami noto'g'ri (+998XXXXXXXXX)"}, headers=headers)
+        
+        import random, time
+        code = str(random.randint(1000, 9999))
+        otp_store[phone] = {
+            'code': code,
+            'created_at': time.time(),
+            'expires_at': time.time() + 300,
+            'attempts': 0
+        }
+        logging.info(f"OTP generated for {phone}: {code}")
+        sms_ok = await send_sms_api(phone, code)
+        return web.json_response({
+            'ok': True,
+            'message': 'SMS kod yuborildi',
+            'smsSent': sms_ok,
+            'code': code # Provided for dev/testing feedback
+        }, headers=headers)
+    except Exception as e:
+        logging.error(f"Error in handle_send_otp: {e}")
+        return web.json_response({'ok': False, 'error': str(e)}, headers=headers)
+
+async def handle_verify_otp(request):
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+    }
+    if request.method == 'OPTIONS':
+        return web.Response(headers=headers)
+    try:
+        data = await request.json()
+        phone = str(data.get('phone', '')).strip()
+        code = str(data.get('code', '')).strip()
+        import time
+        record = otp_store.get(phone)
+        if not record:
+            return web.json_response({'ok': False, 'error': "SMS kod topilmadi yoki muddati o'tgan. Qaytadan kod so'rang."}, headers=headers)
+        if time.time() > record['expires_at']:
+            otp_store.pop(phone, None)
+            return web.json_response({'ok': False, 'error': "SMS kod muddati tugagan (5 min). Qaytadan kod so'rang."}, headers=headers)
+        if record['attempts'] >= 5:
+            otp_store.pop(phone, None)
+            return web.json_response({'ok': False, 'error': "Juda ko'p xato urinishlar qilindi. Yangi kod so'rang."}, headers=headers)
+        if record['code'] != code:
+            record['attempts'] += 1
+            return web.json_response({'ok': False, 'error': "SMS kod noto'g'ri. Qayta urinib ko'ring."}, headers=headers)
+        
+        otp_store.pop(phone, None)
+        return web.json_response({'ok': True, 'message': 'Nomer muvaffaqiyatli tasdiqlandi!'}, headers=headers)
+    except Exception as e:
+        logging.error(f"Error in handle_verify_otp: {e}")
+        return web.json_response({'ok': False, 'error': str(e)}, headers=headers)
+
+async def handle_options(request):
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+    }
+    return web.Response(headers=headers)
+
 async def handle(request):
     return web.Response(text="Bot is running smoothly on Web Service mode!")
+
+async def self_ping():
+    # Sayt to'liq ishga tushib olishi uchun 15 soniya kutamiz
+    await asyncio.sleep(15)
+    url = os.environ.get("RENDER_EXTERNAL_URL")
+    if not url:
+        logging.warning("RENDER_EXTERNAL_URL muhit o'zgaruvchisi (environment variable) topilmadi. Avtomatik self-ping o'chirildi.")
+        return
+    
+    logging.info(f"Avtomatik self-ping ishga tushdi. Manzil: {url}")
+    import aiohttp
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    logging.info(f"Self-ping muvaffaqiyatli bajarildi: Status {response.status}")
+        except Exception as e:
+            logging.error(f"Self-ping xatoligi: {e}")
+        # Har 10 daqiqada ping qilamiz (Render 15 daqiqadan keyin o'chadi)
+        await asyncio.sleep(600)
 
 async def make_app():
     app = web.Application()
     app.router.add_get('/', handle)
     app.router.add_post('/api', handle_api)
+    app.router.add_options('/api', handle_options)
+    app.router.add_post('/api/send-otp', handle_send_otp)
+    app.router.add_options('/api/send-otp', handle_options)
+    app.router.add_post('/api/verify-otp', handle_verify_otp)
+    app.router.add_options('/api/verify-otp', handle_options)
     return app
 
 async def main():
@@ -389,9 +490,14 @@ async def main():
     await runner.setup()
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
+    
+    # Self-ping taskini yaratamiz
+    ping_task = asyncio.create_task(self_ping())
+    
     await asyncio.gather(
         site.start(),
-        dp.start_polling(bot)
+        dp.start_polling(bot),
+        ping_task
     )
 
 if __name__ == "__main__":

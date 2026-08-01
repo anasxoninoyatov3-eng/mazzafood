@@ -1783,3 +1783,42 @@ main .sections-card-ima {
     font-size: 0.95rem;
     color: var(--dark);
 }
+
+/* Custom comment box in item details */
+.item-comment-box {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-top: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.item-comment-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+
+.item-comment-input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    outline: none;
+    box-sizing: border-box;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    background: #ffffff;
+    color: #0f172a;
+}
+
+.item-comment-input:focus {
+    border-color: #ff6b35;
+    box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.15);
+}

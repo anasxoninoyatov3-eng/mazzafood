@@ -7,6 +7,7 @@ const express = require('express');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,8 +15,192 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8429193461:AAEnBiGsVX4hKYVn
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID || 8283401187;
 
 app.use(express.json());
+
+// CORS headers middleware
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+});
+
 // Serve static files from the parent directory
 app.use(express.static(path.join(__dirname, '../')));
+
+// In-memory OTP storage: { phone: { code, expiresAt, attempts } }
+const otpStore = {};
+
+// PlayMobile.uz SMS API helper
+async function sendPlayMobileSms(phone, code) {
+    const login = process.env.PLAYMOBILE_LOGIN;
+    const password = process.env.PLAYMOBILE_PASSWORD;
+    const originator = process.env.PLAYMOBILE_ORIGINATOR || '3700';
+    const apiUrl = process.env.PLAYMOBILE_URL || 'https://send.smsxabar.uz/broker-api/send';
+
+    if (!login || !password) {
+        return { ok: false, error: 'PlayMobile credentials not set in environment variables' };
+    }
+
+    try {
+        const cleanPhone = phone.replace(/[^\d]/g, ''); // 998XXXXXXXXX
+        const msgId = 'mf_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        const authHeader = 'Basic ' + Buffer.from(`${login}:${password}`).toString('base64');
+
+        const response = await axios.post(apiUrl, {
+            messages: [
+                {
+                    recipient: cleanPhone,
+                    'message-id': msgId,
+                    sms: {
+                        originator: originator,
+                        content: {
+                            text: `Mazza Food: Ro'yxatdan o'tish kodingiz: ${code}`
+                        }
+                    }
+                }
+            ]
+        }, {
+            headers: {
+                'Authorization': authHeader,
+                'Content-Type': 'application/json'
+            },
+            timeout: 10000
+        });
+
+        console.log('[PlayMobile SMS response]:', response.data);
+        return { ok: true, provider: 'PlayMobile', data: response.data };
+    } catch (err) {
+        console.error('PlayMobile SMS Exception:', err?.response?.data || err.message);
+        return { ok: false, provider: 'PlayMobile', error: err.message };
+    }
+}
+
+// Eskiz.uz SMS integration helper (Fallback provider)
+let eskizToken = null;
+let eskizTokenExpires = 0;
+
+async function sendEskizSms(phone, code) {
+    const email = process.env.ESKIZ_EMAIL;
+    const password = process.env.ESKIZ_PASSWORD;
+    if (!email || !password) {
+        return { ok: false, error: 'Eskiz credentials not set in environment variables' };
+    }
+
+    try {
+        const cleanPhone = phone.replace(/[^\d]/g, ''); // 998XXXXXXXXX
+        if (!eskizToken || Date.now() > eskizTokenExpires) {
+            const authRes = await axios.post('https://api.eskiz.uz/api/auth/login', {
+                email: email,
+                password: password
+            });
+            if (authRes.data && authRes.data.data && authRes.data.data.token) {
+                eskizToken = authRes.data.data.token;
+                eskizTokenExpires = Date.now() + 25 * 24 * 60 * 60 * 1000;
+            } else {
+                throw new Error('Eskiz auth failed');
+            }
+        }
+
+        const smsRes = await axios.post('https://api.eskiz.uz/api/message/sms/send', {
+            mobile_phone: cleanPhone,
+            message: `Mazza Food: Ro'yxatdan o'tish kodingiz: ${code}`,
+            from: process.env.ESKIZ_FROM || '4546',
+            callback_url: ''
+        }, {
+            headers: { Authorization: `Bearer ${eskizToken}` }
+        });
+
+        return { ok: true, provider: 'Eskiz', data: smsRes.data };
+    } catch (err) {
+        console.error('Eskiz SMS Exception:', err?.response?.data || err.message);
+        return { ok: false, provider: 'Eskiz', error: err.message };
+    }
+}
+
+// Endpoint to send SMS OTP
+app.post('/api/send-otp', async (req, res) => {
+    const { phone } = req.body;
+    if (!phone || !/^\+998\d{9}$/.test(phone)) {
+        return res.status(400).json({ ok: false, error: "Telefon raqami noto'g'ri (+998XXXXXXXXX)" });
+    }
+
+    // Rate limiting: 30 seconds between resends
+    const existing = otpStore[phone];
+    if (existing && existing.createdAt && (Date.now() - existing.createdAt) < 30000) {
+        const remaining = Math.ceil((30000 - (Date.now() - existing.createdAt)) / 1000);
+        return res.status(429).json({ ok: false, error: `Iltimos, qayta yuborish uchun ${remaining} soniya kuting.` });
+    }
+
+    // Generate random 4-digit code
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+
+    otpStore[phone] = {
+        code: code,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes validity
+        attempts: 0
+    };
+
+    console.log(`[SMS OTP generated for ${phone}]: ${code}`);
+
+    // 1. First try sending via PlayMobile.uz SMS API
+    let smsResult = await sendPlayMobileSms(phone, code);
+
+    // 2. If PlayMobile fails or is not configured, fall back to Eskiz.uz
+    if (!smsResult.ok) {
+        const eskizResult = await sendEskizSms(phone, code);
+        if (eskizResult.ok) {
+            smsResult = eskizResult;
+        }
+    }
+
+    // 3. Also send Telegram Notification to Admin/Bot for developer testing & redundancy
+    try {
+        const text = encodeURIComponent(`📲 <b>Mazza Food SMS Verifikatsiya</b>\n\nNomer: <code>${phone}</code>\nKod: <b>${code}</b>\nSMS Provayder: ${smsResult.ok ? smsResult.provider : 'Telegram Demo'}`);
+        const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${text}&parse_mode=HTML`;
+        https.get(url, () => { }).on('error', () => { });
+    } catch (e) { }
+
+    return res.json({
+        ok: true,
+        message: 'SMS kod yuborildi',
+        smsSent: smsResult.ok,
+        provider: smsResult.provider || 'Telegram Fallback'
+    });
+});
+
+// Endpoint to verify SMS OTP
+app.post('/api/verify-otp', (req, res) => {
+    const { phone, code } = req.body;
+    if (!phone || !code) {
+        return res.status(400).json({ ok: false, error: "Barcha maydonlarni to'ldiring." });
+    }
+
+    const record = otpStore[phone];
+    if (!record) {
+        return res.status(400).json({ ok: false, error: "SMS kod topilmadi yoki muddati o'tgan. Qaytadan kod so'rang." });
+    }
+
+    if (Date.now() > record.expiresAt) {
+        delete otpStore[phone];
+        return res.status(400).json({ ok: false, error: "SMS kod muddati tugagan (5 min). Qaytadan kod so'rang." });
+    }
+
+    if (record.attempts >= 5) {
+        delete otpStore[phone];
+        return res.status(429).json({ ok: false, error: "Juda ko'p xato urinishlar qilindi. Yangi kod so'rang." });
+    }
+
+    if (record.code.trim() !== String(code).trim()) {
+        record.attempts += 1;
+        return res.status(400).json({ ok: false, error: "SMS kod noto'g'ri. Qayta urinib ko'ring." });
+    }
+
+    // Success! Clear OTP record
+    delete otpStore[phone];
+    return res.json({ ok: true, message: 'Nomer muvaffaqiyatli tasdiqlandi!' });
+});
 
 app.post('/api/send-order', (req, res) => {
     const order = req.body.order || req.body;

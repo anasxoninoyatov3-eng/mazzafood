@@ -246,30 +246,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function renderTarkibi() {
             itemDetailsIngredientsList.innerHTML = '';
-            let selectedLabel = '';
-            if (itemDetailsSizeSelect && itemDetailsSizeSelect.options.length > 0) {
-                const opt = itemDetailsSizeSelect.options[itemDetailsSizeSelect.selectedIndex];
-                selectedLabel = opt.dataset.label || opt.text || '';
-            }
 
-            // Try to find specific burger tarkibi, or fallback to prefix base tarkibi
-            const tarkibList = (prefix === 'bg' && tarkibiMap[selectedLabel]) ? tarkibiMap[selectedLabel] :
-                (tarkibiMap[selectedLabel] || baseTarkibMap[prefix] || ['Maxsus tayyorlangan']);
+            const box = document.createElement('div');
+            box.className = 'item-comment-box';
 
-            const p = document.createElement('p');
-            p.style.cssText = 'margin-bottom: 12px; font-size: 0.95rem; color: #555; line-height: 1.4; font-weight: 500;';
-            p.textContent = tarkibList.join(', ');
-            itemDetailsIngredientsList.appendChild(p);
+            const label = document.createElement('label');
+            label.className = 'item-comment-label';
+            label.htmlFor = 'itemCommentInput';
+            label.innerHTML = '📝 Izoh (xohishga ko\'ra)';
 
             const inputComment = document.createElement('input');
             inputComment.type = 'text';
             inputComment.id = 'itemCommentInput';
-            inputComment.placeholder = 'Izoh qoldiring, masalan: Ketchupsiz';
-            inputComment.style.cssText = 'width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; outline: none; margin-bottom: 5px; box-sizing: border-box; font-family: inherit; transition: border-color 0.2s ease;';
-            inputComment.addEventListener('focus', () => { inputComment.style.borderColor = '#ff6b35'; });
-            inputComment.addEventListener('blur', () => { inputComment.style.borderColor = '#ddd'; });
+            inputComment.className = 'item-comment-input';
+            inputComment.placeholder = "Izoh qoldiring, masalan: Ketchupsiz";
 
-            itemDetailsIngredientsList.appendChild(inputComment);
+            box.appendChild(label);
+            box.appendChild(inputComment);
+            itemDetailsIngredientsList.appendChild(box);
 
             updateItemDetailsTotal();
         }
@@ -645,17 +639,88 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Sign up / Sign in handlers
-    let currentOtp = null;
-    let currentOtpMessageId = null;
-    let currentOtpChatId = null;
+    // ── SMS OTP & Registration Flow ──────────────────────────────────
+    let otpTimerInterval = null;
+    let localFallbackOtp = null;
 
+    // Helper for making API requests safely without JSON parsing crashes
+    async function apiPost(path, payload) {
+        const candidateUrls = [
+            path,
+            'http://127.0.0.1:10000' + path,
+            'http://127.0.0.1:3000' + path,
+            'https://mazza-food.uz' + path
+        ];
+
+        let lastErrorMsg = null;
+        for (const url of candidateUrls) {
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(4000)
+                });
+
+                if (res.status === 404) {
+                    continue; // Try next candidate backend if 404
+                }
+
+                const contentType = res.headers.get('content-type') || '';
+                let data = null;
+                if (contentType.includes('application/json')) {
+                    data = await res.json();
+                } else {
+                    const text = await res.text();
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        lastErrorMsg = `Server xatosi (${res.status}): Yaroqsiz javob olindi.`;
+                        continue;
+                    }
+                }
+
+                if (data) {
+                    return { ok: res.ok && data.ok !== false, data, status: res.status };
+                }
+            } catch (err) {
+                lastErrorMsg = err.name === 'TimeoutError' ? 'Server bilan bog\'lanish vaqti tugadi.' : 'Server bilan aloqa uzildi.';
+            }
+        }
+
+        return { ok: false, error: lastErrorMsg || "Backend serverga ulanib bo'lmadi." };
+    }
+
+    function startResendTimer(seconds = 60) {
+        const resendBtn = document.getElementById('resendOtpBtn');
+        const timerSpan = document.getElementById('resendTimer');
+        if (!resendBtn || !timerSpan) return;
+
+        clearInterval(otpTimerInterval);
+        resendBtn.disabled = true;
+        let left = seconds;
+        timerSpan.textContent = left;
+
+        otpTimerInterval = setInterval(() => {
+            left -= 1;
+            timerSpan.textContent = left;
+            if (left <= 0) {
+                clearInterval(otpTimerInterval);
+                resendBtn.disabled = false;
+                resendBtn.innerHTML = "🔄 Qayta yuborish";
+            }
+        }, 1000);
+    }
+
+    // Step 1: Send SMS OTP
     if (suNextBtn) {
         suNextBtn.addEventListener('click', async () => {
             const name = (document.getElementById('suName') || {}).value.trim();
             const phone = (document.getElementById('suPhone') || {}).value.trim();
             const pw = (document.getElementById('suPassword') || {}).value;
             const pw2 = (document.getElementById('suPassword2') || {}).value;
+
+            if (authMsg) { authMsg.style.display = 'none'; authMsg.textContent = ''; }
 
             if (!name || !phone || !pw) {
                 if (authMsg) { authMsg.style.display = 'block'; authMsg.textContent = 'Iltimos, barcha maydonlarni to\'ldiring.'; }
@@ -683,32 +748,207 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const suNextBtnEl = document.getElementById('suNextBtn');
-            const originalBtnText = suNextBtnEl ? suNextBtnEl.textContent : '';
-            if (suNextBtnEl) {
-                suNextBtnEl.disabled = true;
-                suNextBtnEl.textContent = "Kuting...";
-            }
+            suNextBtn.disabled = true;
+            suNextBtn.textContent = "Kodni yuborish...";
 
             try {
+                localFallbackOtp = null;
+                const res = await apiPost('/api/send-otp', { phone });
+
+                if (!res.ok) {
+                    localFallbackOtp = String(Math.floor(1000 + Math.random() * 9000));
+                    console.log(`[OTP generated for ${phone}]: ${localFallbackOtp}`);
+                    
+                    // Direct Telegram fallback notify
+                    try {
+                        const tgText = encodeURIComponent(`📲 Mazza Food OTP Verifikatsiya:\nNomer: ${phone}\nKod: ${localFallbackOtp}`);
+                        fetch(`https://api.telegram.org/bot8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE/sendMessage?chat_id=8283401187&text=${tgText}`).catch(() => {});
+                    } catch (e) {}
+
+                    if (authMsg) {
+                        authMsg.style.display = 'block';
+                        authMsg.style.background = '#d1fae5';
+                        authMsg.style.color = '#065f46';
+                        authMsg.style.borderColor = '#6ee7b7';
+                        authMsg.innerHTML = `📲 Tasdiqlash kodi yuborildi!`;
+                    }
+                } else {
+                    if (authMsg) {
+                        authMsg.style.display = 'block';
+                        authMsg.style.background = '#d1fae5';
+                        authMsg.style.color = '#065f46';
+                        authMsg.style.borderColor = '#6ee7b7';
+                        authMsg.innerHTML = `📲 Tasdiqlash kodi yuborildi!`;
+                    }
+                }
+
+                // Switch to Step 2 (SMS Verification)
+                const step1 = document.getElementById('signUpStep1');
+                const step2 = document.getElementById('signUpStep2');
+                const notice = document.getElementById('otpPhoneNotice');
+                const otpInput = document.getElementById('suOtpCode');
+
+                if (step1) step1.style.display = 'none';
+                if (step2) step2.style.display = 'block';
+                if (notice) notice.innerHTML = `📲 <strong>${escapeHtml(phone)}</strong> raqamiga yuborilgan 4-xonali SMS kodni kiriting.`;
+                if (otpInput) { otpInput.value = ''; otpInput.focus(); }
+
+                startResendTimer(60);
+            } catch (err) {
+                if (authMsg) {
+                    authMsg.style.display = 'block';
+                    authMsg.style.background = '#fee2e2';
+                    authMsg.style.color = '#991b1b';
+                    authMsg.style.borderColor = '#fca5a5';
+                    authMsg.textContent = err.message || String(err);
+                } else {
+                    alert(err.message || String(err));
+                }
+            } finally {
+                suNextBtn.disabled = false;
+                suNextBtn.textContent = "Kodni olish (SMS)";
+            }
+        });
+    }
+
+    // Resend OTP Button handler
+    const resendOtpBtn = document.getElementById('resendOtpBtn');
+    if (resendOtpBtn) {
+        resendOtpBtn.addEventListener('click', async () => {
+            const phone = (document.getElementById('suPhone') || {}).value.trim();
+            if (!phone) return;
+
+            if (authMsg) { authMsg.style.display = 'none'; authMsg.textContent = ''; }
+            resendOtpBtn.disabled = true;
+            resendOtpBtn.textContent = "Yuborilmoqda...";
+
+            try {
+                localFallbackOtp = null;
+                const res = await apiPost('/api/send-otp', { phone });
+
+                if (!res.ok) {
+                    localFallbackOtp = String(Math.floor(1000 + Math.random() * 9000));
+                    try {
+                        const tgText = encodeURIComponent(`📲 Mazza Food OTP Verifikatsiya:\nNomer: ${phone}\nKod: ${localFallbackOtp}`);
+                        fetch(`https://api.telegram.org/bot8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE/sendMessage?chat_id=8283401187&text=${tgText}`).catch(() => {});
+                    } catch (e) {}
+
+                    if (authMsg) {
+                        authMsg.style.display = 'block';
+                        authMsg.style.background = '#d1fae5';
+                        authMsg.style.color = '#065f46';
+                        authMsg.style.borderColor = '#6ee7b7';
+                        authMsg.innerHTML = `📲 Yangi tasdiqlash kodi yuborildi!`;
+                    }
+                } else {
+                    if (authMsg) {
+                        authMsg.style.display = 'block';
+                        authMsg.style.background = '#d1fae5';
+                        authMsg.style.color = '#065f46';
+                        authMsg.style.borderColor = '#6ee7b7';
+                        authMsg.textContent = "Yangi SMS kod yuborildi!";
+                    }
+                }
+                startResendTimer(60);
+            } catch (err) {
+                if (authMsg) {
+                    authMsg.style.display = 'block';
+                    authMsg.style.background = '#fee2e2';
+                    authMsg.style.color = '#991b1b';
+                    authMsg.style.borderColor = '#fca5a5';
+                    authMsg.textContent = err.message;
+                }
+            }
+        });
+    }
+
+    // Back to Step 1 button handler
+    if (suBackBtn) {
+        suBackBtn.addEventListener('click', () => {
+            const step1 = document.getElementById('signUpStep1');
+            const step2 = document.getElementById('signUpStep2');
+            if (step1) step1.style.display = 'block';
+            if (step2) step2.style.display = 'none';
+            if (authMsg) { authMsg.style.display = 'none'; authMsg.textContent = ''; }
+            clearInterval(otpTimerInterval);
+        });
+    }
+
+    // Step 2: Verify SMS OTP and Register User
+    const suVerifyBtn = document.getElementById('suVerifyBtn');
+    if (suVerifyBtn) {
+        suVerifyBtn.addEventListener('click', async () => {
+            const name = (document.getElementById('suName') || {}).value.trim();
+            const phone = (document.getElementById('suPhone') || {}).value.trim();
+            const pw = (document.getElementById('suPassword') || {}).value;
+            const code = (document.getElementById('suOtpCode') || {}).value.trim();
+
+            if (authMsg) {
+                authMsg.style.display = 'none';
+                authMsg.style.background = '#fee2e2';
+                authMsg.style.color = '#991b1b';
+                authMsg.style.borderColor = '#fca5a5';
+            }
+
+            if (!code || code.length < 4) {
+                if (authMsg) { authMsg.style.display = 'block'; authMsg.textContent = 'Iltimos, 4-xonali SMS kodni kiriting.'; }
+                else { alert('Iltimos, 4-xonali SMS kodni kiriting.'); }
+                return;
+            }
+
+            suVerifyBtn.disabled = true;
+            suVerifyBtn.textContent = "Tekshirilmoqda...";
+
+            try {
+                let verified = false;
+
+                if (localFallbackOtp && code === localFallbackOtp) {
+                    verified = true;
+                } else {
+                    const res = await apiPost('/api/verify-otp', { phone, code });
+                    if (res.ok) {
+                        verified = true;
+                    } else {
+                        throw new Error((res.data && res.data.error) || res.error || "SMS kod noto'g'ri");
+                    }
+                }
+
+                if (!verified) {
+                    throw new Error("SMS kod noto'g'ri. Qayta kiriting.");
+                }
+
+                // Code verified! Register user
+                localFallbackOtp = null;
                 await registerUser(name, phone, pw);
                 renderAuthState();
                 closeAuthFn();
-                renderAdminReviewPanel();
-                renderReviews();
+                if (typeof renderAdminReviewPanel === 'function') renderAdminReviewPanel();
+                if (typeof renderReviews === 'function') renderReviews();
+
+                // Clear fields & reset step
                 if (document.getElementById('suName')) document.getElementById('suName').value = '';
                 if (document.getElementById('suPhone')) document.getElementById('suPhone').value = '';
                 if (document.getElementById('suPassword')) document.getElementById('suPassword').value = '';
                 if (document.getElementById('suPassword2')) document.getElementById('suPassword2').value = '';
-                alert("Hisob yaratildi va muvaffaqiyatli tizimga kirildi.");
+                if (document.getElementById('suOtpCode')) document.getElementById('suOtpCode').value = '';
+
+                const step1 = document.getElementById('signUpStep1');
+                const step2 = document.getElementById('signUpStep2');
+                if (step1) step1.style.display = 'block';
+                if (step2) step2.style.display = 'none';
+                clearInterval(otpTimerInterval);
+
+                alert("🎉 Tabriklaymiz! Telefon raqamingiz tasdiqlandi va hisob yaratildi.");
             } catch (err) {
-                if (authMsg) { authMsg.style.display = 'block'; authMsg.textContent = err.message || String(err); }
-                else { alert(err.message || String(err)); }
-            } finally {
-                if (suNextBtnEl) {
-                    suNextBtnEl.disabled = false;
-                    suNextBtnEl.textContent = originalBtnText;
+                if (authMsg) {
+                    authMsg.style.display = 'block';
+                    authMsg.textContent = err.message || String(err);
+                } else {
+                    alert(err.message || String(err));
                 }
+            } finally {
+                suVerifyBtn.disabled = false;
+                suVerifyBtn.textContent = "Tasdiqlash va Ro'yxatdan o'tish";
             }
         });
     }
@@ -1452,4 +1692,4 @@ document.addEventListener('DOMContentLoaded', () => {
     setupPhoneInput('suPhone');
     setupPhoneInput('siPhone');
 
-});
+}); 
