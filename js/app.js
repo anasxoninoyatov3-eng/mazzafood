@@ -260,29 +260,24 @@ document.addEventListener('DOMContentLoaded', () => {
             itemDetailsIngredientsList.appendChild(boxHeader);
 
             const listWrap = document.createElement('div');
-            listWrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;';
+            listWrap.style.cssText = 'display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;';
 
             ingredients.forEach(ing => {
                 const row = document.createElement('div');
                 row.className = 'tarkibi-item';
-                row.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;';
+                row.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 8px 10px;';
 
                 const dot = document.createElement('span');
                 dot.className = 'tarkibi-dot';
-                dot.style.cssText = 'width: 8px; height: 8px; border-radius: 50%; background: #ff6b35; flex-shrink: 0;';
+                dot.style.cssText = 'width: 6px; height: 6px; border-radius: 50%; background: #ff6b35; flex-shrink: 0;';
 
                 const nameEl = document.createElement('span');
                 nameEl.className = 'tarkibi-name';
                 nameEl.style.cssText = 'font-weight: 500; color: #1a1a1a; font-size: 0.95rem; flex: 1;';
                 nameEl.textContent = ing.name;
 
-                const freeBadge = document.createElement('span');
-                freeBadge.style.cssText = 'background: #22c55e; color: #fff; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;';
-                freeBadge.textContent = 'BEPUL';
-
                 row.appendChild(dot);
                 row.appendChild(nameEl);
-                row.appendChild(freeBadge);
                 listWrap.appendChild(row);
             });
 
