@@ -685,11 +685,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Helper for making API requests safely without JSON parsing crashes
     async function apiPost(path, payload) {
+        const origin = window.location.origin || '';
         const candidateUrls = [
             path,
+            origin + path,
+            'https://mazza-food.uz' + path,
             'http://127.0.0.1:10000' + path,
-            'http://127.0.0.1:3000' + path,
-            'https://mazza-food.uz' + path
+            'http://127.0.0.1:3000' + path
         ];
 
         let lastErrorMsg = null;
@@ -1297,15 +1299,20 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('mazza_orders', JSON.stringify(orders));
 
             // Try to notify backend (if available) which will forward to Telegram.
+            let backendOk = false;
+            let backendErrorMsg = '';
             try {
-                const success = await sendOrderToBackend(order);
-                if (success) {
-                    const eta = delivery && delivery.eta ? `${delivery.eta} daqiqa` : 'tez orada';
-                    alert(`✅ Buyurtma qabul qilindi va Telegram orqali yuborildi! \nYetkazib berish: taxminan ${eta}. \nJami: ${formatPrice(totalWithDelivery)}`);
-                }
+                backendOk = await sendOrderToBackend(order);
             } catch (err) {
                 console.error('Order sending error:', err);
-                alert(`⚠️ Xatolik yuz berdi: ${err.message}. Buyurtma faqat lokal saqlandi.`);
+                backendErrorMsg = err?.message || String(err);
+            }
+
+            const eta = delivery && delivery.eta ? `${delivery.eta} daqiqa` : 'tez orada';
+            if (backendOk) {
+                alert(`✅ Buyurtma qabul qilindi va Telegram orqali yuborildi! \nYetkazib berish: taxminan ${eta}. \nJami: ${formatPrice(totalWithDelivery)}`);
+            } else {
+                alert(`⚠️ DIQQAT: Internet bilan bog'lanishda xatolik yoki server ishlamayapti.\n\nBuyurtma ma'lumotlari saqlandi, lekin ADMINGA YUBORILMADI.\nIltimos, darhol qo'ng'iroq qiling: +998 97 201 10 10\n\nJami: ${formatPrice(totalWithDelivery)}\n${backendErrorMsg ? 'Xato: ' + backendErrorMsg : ''}`);
             }
 
             cart = {}; updateCartUI(); closeOrderFn(); closeCartFn();

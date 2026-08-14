@@ -356,7 +356,7 @@ async def handle_api(request):
                 it = items[key]
                 text += f"▫️ {it['name']} × {it['qty']} = {it['price'] * it['qty']:,} so'm\n"
             delivery = order.get('delivery', {})
-            d_method = "Olib ketish" if delivery.get('method') == 'pickup' else (delivery.get('method', 'standard'))
+            d_method = "Olib ketish" if delivery.get('method') == 'pickup' else ("Zalda" if delivery.get('method') == 'zalda' else delivery.get('method', 'Yetkazib berish'))
             text += f"\n🚚 Yetkazib berish: <b>{d_method}</b>"
             if delivery.get('fee'):
                 text += f" ({delivery['fee']:,} so'm)"
@@ -365,20 +365,61 @@ async def handle_api(request):
             text += f"\n\n💰 <b>Jami: {order.get('total', 0):,} so'm</b>"
             dt = datetime.fromtimestamp(order.get('ts', 0) / 1000)
             text += f"\n🕒 Vaqt: {dt.strftime('%d.%m.%Y, %H:%M:%S')}"
-            from aiogram import Bot
-            order_bot = Bot(token=ADMIN_BOT_TOKEN)
             try:
-                await order_bot.send_message(ADMIN_CHAT_ID, text, parse_mode='HTML')
-                logging.info(f"Order {order.get('id')} sent successfully via Admin Bot")
+                await admin_bot.send_message(ADMIN_CHAT_ID, text, parse_mode='HTML')
+                logging.info(f"Order {order.get('id')} sent successfully via existing Admin Bot (submit_order)")
             except Exception as e:
-                logging.error(f"Failed to send order message: {e}")
+                logging.error(f"Failed to send order message (submit_order): {e}")
                 raise e
-            finally:
-                await order_bot.session.close()
             return web.json_response({'ok': True}, headers=headers)
         return web.json_response({'ok': False, 'error': 'Unknown action'}, headers=headers)
     except Exception as e:
         logging.error(f"API Error: {e}")
+        return web.json_response({'ok': False, 'error': str(e)}, headers=headers)
+
+async def handle_send_order(request):
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+    }
+    if request.method == 'OPTIONS':
+        return web.Response(headers=headers)
+    try:
+        data = await request.json()
+        order = data.get('order') or data
+        text = "📦 <b>Yangi buyurtma!</b>\n\n"
+        text += f"""👤 Mijoz: <b>{order.get('name', "Noma'lum")}</b>\n"""
+        text += f"""📞 Telefon: <code>{order.get('phone', "Noma'lum")}</code>\n"""
+        text += f"📍 Manzil: {order.get('address','-')}\n\n"
+        text += "🛒 <b>Buyurtma tarkibi:</b>\n"
+        items = order.get('items', {})
+        if isinstance(items, dict):
+            for key in items:
+                it = items[key]
+                text += f"▫️ {it['name']} × {it['qty']} = {it['price'] * it['qty']:,} so'm\n"
+        elif isinstance(items, list):
+            for it in items:
+                text += f"▫️ {it['name']} × {it['qty']} = {it['price'] * it['qty']:,} so'm\n"
+        delivery = order.get('delivery', {})
+        d_method = "Olib ketish" if delivery.get('method') == 'pickup' else ("Zalda" if delivery.get('method') == 'zalda' else delivery.get('method', 'Yetkazib berish'))
+        text += f"\n🚚 Yetkazib berish: <b>{d_method}</b>"
+        if delivery.get('fee'):
+            text += f" ({delivery['fee']:,} so'm)"
+        payment = "💳 Click / Payme" if order.get('payment') == 'click' else "💵 Naqd"
+        text += f"\n💳 To'lov turi: <b>{payment}</b>"
+        text += f"\n\n💰 <b>Jami: {order.get('total', 0):,} so'm</b>"
+        dt = datetime.fromtimestamp(order.get('ts', 0) / 1000) if order.get('ts') else datetime.now()
+        text += f"\n🕒 Vaqt: {dt.strftime('%d.%m.%Y, %H:%M:%S')}"
+        try:
+            await admin_bot.send_message(ADMIN_CHAT_ID, text, parse_mode='HTML')
+            logging.info(f"Order {order.get('id')} sent successfully via /api/send-order endpoint")
+        except Exception as e:
+            logging.error(f"Failed to send order via /api/send-order: {e}")
+            raise e
+        return web.json_response({'ok': True, 'sent_to_admin': True}, headers=headers)
+    except Exception as e:
+        logging.error(f"/api/send-order Error: {e}")
         return web.json_response({'ok': False, 'error': str(e)}, headers=headers)
 
 async def handle_send_otp(request):
@@ -483,6 +524,8 @@ async def make_app():
     app.router.add_get('/', handle)
     app.router.add_post('/api', handle_api)
     app.router.add_options('/api', handle_options)
+    app.router.add_post('/api/send-order', handle_send_order)
+    app.router.add_options('/api/send-order', handle_options)
     app.router.add_post('/api/send-otp', handle_send_otp)
     app.router.add_options('/api/send-otp', handle_options)
     app.router.add_post('/api/verify-otp', handle_verify_otp)
