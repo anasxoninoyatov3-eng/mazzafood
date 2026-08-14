@@ -473,12 +473,17 @@ document.addEventListener('DOMContentLoaded', () => {
         checkout.addEventListener('click', () => {
             if (Object.keys(cart).length === 0) { alert('Avval biror narsa qo\'shing.'); return }
             populateOrderForm();
+            // Avto-to'ldirish: login qilgan foydalanuvchi yoki oxirgi saqlangan ma'lumot
             const cur = getCurrentUser();
+            const lastCustomer = JSON.parse(localStorage.getItem('mazza_last_customer') || 'null');
+            const nameEl = document.getElementById('customerName');
+            const phoneEl = document.getElementById('customerPhone');
             if (cur) {
-                const nameEl = document.getElementById('customerName');
-                const phoneEl = document.getElementById('customerPhone');
                 if (nameEl && !nameEl.value) nameEl.value = cur.name || '';
                 if (phoneEl && !phoneEl.value) phoneEl.value = cur.phone || '';
+            } else if (lastCustomer) {
+                if (nameEl && !nameEl.value) nameEl.value = lastCustomer.name || '';
+                if (phoneEl && !phoneEl.value) phoneEl.value = lastCustomer.phone || '';
             }
             if (orderModal) {
                 orderModal.setAttribute('aria-hidden', 'false');
@@ -1246,94 +1251,169 @@ document.addEventListener('DOMContentLoaded', () => {
             const submitBtn = orderForm.querySelector('button[type="submit"]');
             const originalBtnText = submitBtn ? submitBtn.textContent : '';
 
-            const nameEl = document.getElementById('customerName');
-            const phoneEl = document.getElementById('customerPhone');
-            const addrEl = document.getElementById('customerAddress');
-
-            const name = nameEl ? nameEl.value.trim() : '';
-            const phone = phoneEl ? phoneEl.value.trim() : '';
-            let address = addrEl ? addrEl.value.trim() : '';
-
-            // If pickup or zalda, address is not required
-            const delivery = window.__mazza_current_delivery || { fee: 0, eta: 0, method: 'standard' };
-            if (delivery.method === 'pickup') {
-                address = 'Olib ketish'; // Set default text for pickup
-            } else if (delivery.method === 'zalda') {
-                address = 'Ichkarida (Zalda)';
-            }
-
-            // Validate name: only letters and spaces
-            if (!/^[A-Za-z\u0400-\u04FF\s\'\`]+$/.test(name)) {
-                alert('Ismda faqat harflar bo\'lishi kerak.');
-                return;
-            }
-
-            // Validate phone format: must be +998 followed by 9 digits
-            // AND strict provider code check (33, 50, 55, 70, 71, 77, 88, 90, 91, 93, 94, 95, 97, 98, 99)
-            if (!/^\+998(33|50|55|70|71|77|88|90|91|93|94|95|97|98|99)\d{7}$/.test(phone)) {
-                alert('Telefon raqami noto\'g\'ri formatda yoki O\'zbekiston kodi emas. Iltimos, +998 bilan boshlanadigan to\'g\'ri raqam kiriting (masalan: +998901234567).');
-                return;
-            }
-
-            if (!name || !phone || (!address && delivery.method !== 'pickup')) {
-                alert('Iltimos, barcha maydonlarni to\'ldiring.');
-                return;
-            }
-
-            const subtotal = Object.values(cart).reduce((s, i) => s + i.price * i.qty, 0);
-            const totalWithDelivery = subtotal + (Number(delivery.fee) || 0);
-
-            // Get selected payment method
-            const paymentSel = document.getElementById('paymentMethod');
-            const paymentMethod = paymentSel ? paymentSel.value : 'cash';
-
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.textContent = 'Yuborilmoqda...';
-            }
-
-            const order = { id: 'ord_' + Date.now(), name, phone, address, items: cart, subtotal, delivery, total: totalWithDelivery, payment: paymentMethod, ts: Date.now() };
-
-            const orders = JSON.parse(localStorage.getItem('mazza_orders') || '[]');
-            orders.push(order);
-            localStorage.setItem('mazza_orders', JSON.stringify(orders));
-
-            // Try to notify backend (if available) which will forward to Telegram.
-            let backendOk = false;
-            let backendErrorMsg = '';
             try {
-                backendOk = await sendOrderToBackend(order);
-            } catch (err) {
-                console.error('Order sending error:', err);
-                backendErrorMsg = err?.message || String(err);
-            }
+                const nameEl = document.getElementById('customerName');
+                const phoneEl = document.getElementById('customerPhone');
+                const addrEl = document.getElementById('customerAddress');
 
-            const eta = delivery && delivery.eta ? `${delivery.eta} daqiqa` : 'tez orada';
-            if (backendOk) {
-                alert(`✅ Buyurtma qabul qilindi va Telegram orqali yuborildi! \nYetkazib berish: taxminan ${eta}. \nJami: ${formatPrice(totalWithDelivery)}`);
-            } else {
-                alert(`⚠️ DIQQAT: Internet bilan bog'lanishda xatolik yoki server ishlamayapti.\n\nBuyurtma ma'lumotlari saqlandi, lekin ADMINGA YUBORILMADI.\nIltimos, darhol qo'ng'iroq qiling: +998 97 201 10 10\n\nJami: ${formatPrice(totalWithDelivery)}\n${backendErrorMsg ? 'Xato: ' + backendErrorMsg : ''}`);
-            }
+                const name = nameEl ? nameEl.value.trim() : '';
+                const phone = phoneEl ? phoneEl.value.trim() : '';
+                let address = addrEl ? addrEl.value.trim() : '';
 
-            cart = {}; updateCartUI(); closeOrderFn(); closeCartFn();
+                const delivery = window.__mazza_current_delivery || { fee: 0, eta: 0, method: 'standard' };
+                if (delivery.method === 'pickup') {
+                    address = 'Olib ketish';
+                } else if (delivery.method === 'zalda') {
+                    address = 'Ichkarida (Zalda)';
+                }
 
-            // Restore button state
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = originalBtnText;
+                if (!/^[A-Za-z\u0400-\u04FF\s\'\`]+$/.test(name)) {
+                    alert('Ismda faqat harflar bo\'lishi kerak.');
+                    return;
+                }
+
+                if (!/^\+998(33|50|55|70|71|77|88|90|91|93|94|95|97|98|99)\d{7}$/.test(phone)) {
+                    alert('Telefon raqami noto\'g\'ri formatda yoki O\'zbekiston kodi emas. Iltimos, +998 bilan boshlanadigan to\'g\'ri raqam kiriting (masalan: +998901234567).');
+                    return;
+                }
+
+                if (!name || !phone || (!address && delivery.method !== 'pickup')) {
+                    alert('Iltimos, barcha maydonlarni to\'ldiring.');
+                    return;
+                }
+
+                const subtotal = Object.values(cart).reduce((s, i) => s + i.price * i.qty, 0);
+                const totalWithDelivery = subtotal + (Number(delivery.fee) || 0);
+
+                const paymentSel = document.getElementById('paymentMethod');
+                const paymentMethod = paymentSel ? paymentSel.value : 'cash';
+
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Yuborilmoqda...';
+                }
+
+                const order = { id: 'ord_' + Date.now(), name, phone, address, items: { ...cart }, subtotal, delivery, total: totalWithDelivery, payment: paymentMethod, ts: Date.now() };
+
+                // Foydalanuvchi ma'lumotlarini saqlash (keyingi safar avto-to'ldirish uchun)
+                localStorage.setItem('mazza_last_customer', JSON.stringify({ name, phone }));
+
+                // Agar foydalanuvchi login qilgan bo'lsa, profil ma'lumotlarini yangilash
+                const currentUser = getCurrentUser();
+                if (currentUser) {
+                    const users = loadUsers();
+                    const idx = users.findIndex(u => String(u.id) === String(currentUser.id));
+                    if (idx !== -1) {
+                        users[idx].name = name;
+                        users[idx].phone = phone;
+                        saveUsers(users);
+                    }
+                }
+
+                const orders = JSON.parse(localStorage.getItem('mazza_orders') || '[]');
+                orders.push(order);
+                localStorage.setItem('mazza_orders', JSON.stringify(orders));
+
+                let backendOk = false;
+                let backendErrorMsg = '';
+                try {
+                    backendOk = await sendOrderToBackend(order);
+                } catch (err) {
+                    console.error('Order sending error:', err);
+                    backendErrorMsg = err?.message || String(err);
+                }
+
+                const eta = delivery && delivery.eta ? `${delivery.eta} daqiqa` : 'tez orada';
+                if (backendOk) {
+                    alert('✅ Buyurtma qabul qilindi va Telegram orqali yuborildi!\nYetkazib berish: taxminan ' + eta + '.\nJami: ' + formatPrice(totalWithDelivery));
+                } else {
+                    alert('⚠️ DIQQAT: Internet bilan bog\'lanishda xatolik yoki server ishlamayapti.\n\nBuyurtma saqlandi, lekin ADMINGA YUBORILMADI!\nIltimos, darhol qo\'ng\'iroq qiling: +998 97 201 10 10\n\nJami: ' + formatPrice(totalWithDelivery) + '\n' + (backendErrorMsg ? 'Xato: ' + backendErrorMsg : ''));
+                }
+
+                cart = {};
+                updateCartUI();
+                closeOrderFn();
+                closeCartFn();
+            } catch (outerErr) {
+                console.error('Order form FATAL error:', outerErr);
+                alert('❌ Xatolik yuz berdi: ' + (outerErr?.message || String(outerErr)) + '\nIltimos, qo\'ng\'iroq qiling: +998 97 201 10 10');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalBtnText;
+                }
             }
         };
     }
 
-    // Send order via secure backend API endpoint (never exposes Telegram BOT_TOKEN in browser)
+    // Send order via Telegram Bot API directly (no backend server needed)
     async function sendOrderToBackend(order) {
+        // First try backend server endpoints
         try {
             const res = await apiPost('/api/send-order', { order });
             if (res.ok) return true;
             const res2 = await apiPost('/api', { action: 'submit_order', order });
-            return !!(res2 && res2.ok);
+            if (res2 && res2.ok) return true;
         } catch (err) {
-            console.error('Error submitting order to backend:', err);
+            console.warn('Backend server unavailable, trying Telegram API directly:', err);
+        }
+
+        // Fallback: send directly via Telegram Bot API
+        try {
+            const ADMIN_BOT_TOKEN = '8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE';
+            const ADMIN_CHAT_ID = '8283401187';
+
+            const deliveryMethodMap = { pickup: 'Olib ketish', zalda: 'Zalda', express: 'Express', standard: 'Yetkazib berish' };
+            const d = order.delivery || {};
+            const dMethod = deliveryMethodMap[d.method] || d.method || 'Yetkazib berish';
+            const paymentLabel = order.payment === 'click' ? '💳 Click / Payme' : '💵 Naqd';
+
+            let itemsText = '';
+            const items = order.items || {};
+            if (typeof items === 'object' && !Array.isArray(items)) {
+                Object.values(items).forEach(it => {
+                    itemsText += `  ▫️ ${it.name} × ${it.qty} = ${(it.price * it.qty).toLocaleString()} so'm\n`;
+                });
+            } else if (Array.isArray(items)) {
+                items.forEach(it => {
+                    itemsText += `  ▫️ ${it.name} × ${it.qty} = ${(it.price * it.qty).toLocaleString()} so'm\n`;
+                });
+            }
+
+            const now = new Date();
+            const timeStr = now.toLocaleString('uz-UZ', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+            const text = `📦 <b>Yangi buyurtma (Sayt)!</b>\n\n` +
+                `👤 Mijoz: <b>${order.name || "Noma'lum"}</b>\n` +
+                `📞 Telefon: <code>${order.phone || "Noma'lum"}</code>\n` +
+                `📍 Manzil: ${order.address || '-'}\n\n` +
+                `🛒 <b>Buyurtma tarkibi:</b>\n${itemsText}\n` +
+                `🚚 Yetkazib berish: <b>${dMethod}</b>${d.fee ? ` (${Number(d.fee).toLocaleString()} so'm)` : ''}\n` +
+                `${paymentLabel}\n\n` +
+                `💰 <b>Jami: ${(order.total || 0).toLocaleString()} so'm</b>\n` +
+                `🕒 Vaqt: ${timeStr}`;
+
+            const tgRes = await fetch(`https://api.telegram.org/bot${ADMIN_BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: ADMIN_CHAT_ID,
+                    text,
+                    parse_mode: 'HTML'
+                }),
+                signal: AbortSignal.timeout(8000)
+            });
+
+            const tgData = await tgRes.json();
+            if (tgData.ok) {
+                console.log('Order sent via Telegram Bot API directly.');
+                return true;
+            } else {
+                console.error('Telegram API error:', tgData);
+                return false;
+            }
+        } catch (err) {
+            console.error('Error sending order via Telegram API:', err);
             return false;
         }
     }
