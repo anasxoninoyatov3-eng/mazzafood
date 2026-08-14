@@ -247,8 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const ingredients = (baseTarkibMap[prefix] || baseTarkibMap['b']).map(name => ({
                 name,
-                price: 0,
-                qty: 1
+                price: 0
             }));
 
             const boxHeader = document.createElement('div');
@@ -260,91 +259,38 @@ document.addEventListener('DOMContentLoaded', () => {
             boxHeader.appendChild(headerLabel);
             itemDetailsIngredientsList.appendChild(boxHeader);
 
-            ingredients.forEach((ing, idx) => {
-                const ingId = `ing_${prefix}_${idx}`;
+            const listWrap = document.createElement('div');
+            listWrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;';
 
+            ingredients.forEach(ing => {
                 const row = document.createElement('div');
-                row.className = 'ing-item-add';
-                row.dataset.price = ing.price;
-                row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 8px;';
+                row.className = 'tarkibi-item';
+                row.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;';
 
-                const info = document.createElement('div');
-                info.className = 'ing-item-info';
-                info.style.cssText = 'display: flex; flex-direction: column; gap: 2px; flex: 1;';
+                const dot = document.createElement('span');
+                dot.className = 'tarkibi-dot';
+                dot.style.cssText = 'width: 8px; height: 8px; border-radius: 50%; background: #ff6b35; flex-shrink: 0;';
 
-                const nameEl = document.createElement('div');
-                nameEl.className = 'ing-item-name';
-                nameEl.style.cssText = 'font-weight: 600; color: #1a1a1a; font-size: 0.98rem;';
+                const nameEl = document.createElement('span');
+                nameEl.className = 'tarkibi-name';
+                nameEl.style.cssText = 'font-weight: 500; color: #1a1a1a; font-size: 0.95rem; flex: 1;';
                 nameEl.textContent = ing.name;
 
-                const priceEl = document.createElement('div');
-                priceEl.className = 'ing-item-price';
-                priceEl.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 2px;';
-
                 const freeBadge = document.createElement('span');
-                freeBadge.className = 'ing-free-badge';
-                freeBadge.style.cssText = 'background: #22c55e; color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;';
+                freeBadge.style.cssText = 'background: #22c55e; color: #fff; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;';
                 freeBadge.textContent = 'BEPUL';
-                priceEl.appendChild(freeBadge);
-                info.appendChild(nameEl);
-                info.appendChild(priceEl);
 
-                const controls = document.createElement('div');
-                controls.className = 'ing-item-controls';
-                controls.style.cssText = 'display: flex; align-items: center; gap: 8px;';
-
-                const minusBtn = document.createElement('button');
-                minusBtn.className = 'ing-btn ing-btn-minus';
-                minusBtn.type = 'button';
-                minusBtn.style.cssText = 'width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e5e7eb; background: #f3f4f6; color: #374151; font-size: 1.1rem; cursor: pointer; font-weight: 700; display: flex; align-items: center; justify-content: center;';
-                minusBtn.innerHTML = '−';
-
-                const qtyEl = document.createElement('span');
-                qtyEl.className = 'ing-qty-display ing-qty';
-                qtyEl.dataset.price = ing.price;
-                qtyEl.textContent = ing.qty;
-                qtyEl.style.cssText = 'min-width: 24px; text-align: center; font-weight: 600; color: #1a1a1a; font-size: 1rem;';
-
-                const plusBtn = document.createElement('button');
-                plusBtn.className = 'ing-btn ing-btn-plus';
-                plusBtn.type = 'button';
-                plusBtn.style.cssText = 'width: 32px; height: 32px; border-radius: 8px; border: none; background: #ff6b35; color: #fff; font-size: 1.1rem; cursor: pointer; font-weight: 700; display: flex; align-items: center; justify-content: center;';
-                plusBtn.innerHTML = '+';
-
-                minusBtn.addEventListener('click', () => {
-                    let v = parseInt(qtyEl.textContent) || 0;
-                    if (v > 0) {
-                        v -= 1;
-                        qtyEl.textContent = v;
-                        minusBtn.style.opacity = v === 0 ? '0.5' : '1';
-                        minusBtn.disabled = v === 0;
-                    }
-                    updateItemDetailsTotal();
-                });
-                minusBtn.disabled = ing.qty === 0;
-                minusBtn.style.opacity = ing.qty === 0 ? '0.5' : '1';
-
-                plusBtn.addEventListener('click', () => {
-                    let v = parseInt(qtyEl.textContent) || 0;
-                    v += 1;
-                    qtyEl.textContent = v;
-                    minusBtn.style.opacity = '1';
-                    minusBtn.disabled = false;
-                    updateItemDetailsTotal();
-                });
-
-                controls.appendChild(minusBtn);
-                controls.appendChild(qtyEl);
-                controls.appendChild(plusBtn);
-
-                row.appendChild(info);
-                row.appendChild(controls);
-                itemDetailsIngredientsList.appendChild(row);
+                row.appendChild(dot);
+                row.appendChild(nameEl);
+                row.appendChild(freeBadge);
+                listWrap.appendChild(row);
             });
+
+            itemDetailsIngredientsList.appendChild(listWrap);
 
             const box = document.createElement('div');
             box.className = 'item-comment-box';
-            box.style.cssText = 'margin-top: 8px; padding: 14px; background: #f8fafc; border-radius: 14px; border: 1px solid #e2e8f0;';
+            box.style.cssText = 'margin-top: 4px; padding: 14px; background: #f8fafc; border-radius: 14px; border: 1px solid #e2e8f0;';
 
             const label = document.createElement('label');
             label.className = 'item-comment-label';
@@ -408,29 +354,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             let ingredientsStr = '';
-            const ingParts = [];
-
-            if (itemDetailsIngredientsList) {
-                const rows = itemDetailsIngredientsList.querySelectorAll('.ing-item-add');
-                rows.forEach(row => {
-                    const qtyEl = row.querySelector('.ing-qty');
-                    const nameEl = row.querySelector('.ing-item-name');
-                    if (!qtyEl || !nameEl) return;
-                    const qty = parseInt(qtyEl.textContent) || 0;
-                    const n = nameEl.textContent.trim();
-                    if (qty > 0) {
-                        ingParts.push(qty === 1 ? n : `${n} × ${qty}`);
-                    }
-                });
-            }
 
             const commentInput = document.getElementById('itemCommentInput');
             if (commentInput && commentInput.value.trim() !== '') {
-                ingParts.push(commentInput.value.trim());
-            }
-
-            if (ingParts.length > 0) {
-                ingredientsStr = ` (${ingParts.join(', ')})`;
+                ingredientsStr = ` (${commentInput.value.trim()})`;
             }
 
             finalPrice += 0;
