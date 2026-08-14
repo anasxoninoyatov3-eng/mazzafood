@@ -245,19 +245,121 @@ document.addEventListener('DOMContentLoaded', () => {
         function renderTarkibi() {
             itemDetailsIngredientsList.innerHTML = '';
 
+            const ingredients = (baseTarkibMap[prefix] || baseTarkibMap['b']).map(name => ({
+                name,
+                price: 0,
+                qty: 1
+            }));
+
+            const boxHeader = document.createElement('div');
+            boxHeader.className = 'item-comment-box';
+            boxHeader.style.cssText = 'margin-bottom: 14px; padding: 14px; background: #f8fafc; border-radius: 14px; border: 1px solid #e2e8f0;';
+            const headerLabel = document.createElement('div');
+            headerLabel.className = 'ing-section-title';
+            headerLabel.innerHTML = '🧪 Tarkibi';
+            boxHeader.appendChild(headerLabel);
+            itemDetailsIngredientsList.appendChild(boxHeader);
+
+            ingredients.forEach((ing, idx) => {
+                const ingId = `ing_${prefix}_${idx}`;
+
+                const row = document.createElement('div');
+                row.className = 'ing-item-add';
+                row.dataset.price = ing.price;
+                row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 8px;';
+
+                const info = document.createElement('div');
+                info.className = 'ing-item-info';
+                info.style.cssText = 'display: flex; flex-direction: column; gap: 2px; flex: 1;';
+
+                const nameEl = document.createElement('div');
+                nameEl.className = 'ing-item-name';
+                nameEl.style.cssText = 'font-weight: 600; color: #1a1a1a; font-size: 0.98rem;';
+                nameEl.textContent = ing.name;
+
+                const priceEl = document.createElement('div');
+                priceEl.className = 'ing-item-price';
+                priceEl.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 2px;';
+
+                const freeBadge = document.createElement('span');
+                freeBadge.className = 'ing-free-badge';
+                freeBadge.style.cssText = 'background: #22c55e; color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;';
+                freeBadge.textContent = 'BEPUL';
+                priceEl.appendChild(freeBadge);
+                info.appendChild(nameEl);
+                info.appendChild(priceEl);
+
+                const controls = document.createElement('div');
+                controls.className = 'ing-item-controls';
+                controls.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+
+                const minusBtn = document.createElement('button');
+                minusBtn.className = 'ing-btn ing-btn-minus';
+                minusBtn.type = 'button';
+                minusBtn.style.cssText = 'width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e5e7eb; background: #f3f4f6; color: #374151; font-size: 1.1rem; cursor: pointer; font-weight: 700; display: flex; align-items: center; justify-content: center;';
+                minusBtn.innerHTML = '−';
+
+                const qtyEl = document.createElement('span');
+                qtyEl.className = 'ing-qty-display ing-qty';
+                qtyEl.dataset.price = ing.price;
+                qtyEl.textContent = ing.qty;
+                qtyEl.style.cssText = 'min-width: 24px; text-align: center; font-weight: 600; color: #1a1a1a; font-size: 1rem;';
+
+                const plusBtn = document.createElement('button');
+                plusBtn.className = 'ing-btn ing-btn-plus';
+                plusBtn.type = 'button';
+                plusBtn.style.cssText = 'width: 32px; height: 32px; border-radius: 8px; border: none; background: #ff6b35; color: #fff; font-size: 1.1rem; cursor: pointer; font-weight: 700; display: flex; align-items: center; justify-content: center;';
+                plusBtn.innerHTML = '+';
+
+                minusBtn.addEventListener('click', () => {
+                    let v = parseInt(qtyEl.textContent) || 0;
+                    if (v > 0) {
+                        v -= 1;
+                        qtyEl.textContent = v;
+                        minusBtn.style.opacity = v === 0 ? '0.5' : '1';
+                        minusBtn.disabled = v === 0;
+                    }
+                    updateItemDetailsTotal();
+                });
+                minusBtn.disabled = ing.qty === 0;
+                minusBtn.style.opacity = ing.qty === 0 ? '0.5' : '1';
+
+                plusBtn.addEventListener('click', () => {
+                    let v = parseInt(qtyEl.textContent) || 0;
+                    v += 1;
+                    qtyEl.textContent = v;
+                    minusBtn.style.opacity = '1';
+                    minusBtn.disabled = false;
+                    updateItemDetailsTotal();
+                });
+
+                controls.appendChild(minusBtn);
+                controls.appendChild(qtyEl);
+                controls.appendChild(plusBtn);
+
+                row.appendChild(info);
+                row.appendChild(controls);
+                itemDetailsIngredientsList.appendChild(row);
+            });
+
             const box = document.createElement('div');
             box.className = 'item-comment-box';
+            box.style.cssText = 'margin-top: 8px; padding: 14px; background: #f8fafc; border-radius: 14px; border: 1px solid #e2e8f0;';
 
             const label = document.createElement('label');
             label.className = 'item-comment-label';
             label.htmlFor = 'itemCommentInput';
             label.innerHTML = '📝 Izoh (xohishga ko\'ra)';
+            label.style.cssText = 'display: block; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; font-size: 0.98rem;';
 
             const inputComment = document.createElement('input');
             inputComment.type = 'text';
             inputComment.id = 'itemCommentInput';
             inputComment.className = 'item-comment-input';
             inputComment.placeholder = "Izoh qoldiring, masalan: Ketchupsiz";
+            inputComment.style.cssText = 'width: 100%; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 0.98rem; font-family: inherit; outline: none; transition: all 0.2s; box-sizing: border-box;';
+            inputComment.addEventListener('focus', () => { inputComment.style.borderColor = '#ff6b35'; inputComment.style.boxShadow = '0 0 0 3px rgba(255,107,53,0.15)'; });
+            inputComment.addEventListener('blur', () => { inputComment.style.borderColor = '#d1d5db'; inputComment.style.boxShadow = 'none'; });
 
             box.appendChild(label);
             box.appendChild(inputComment);
@@ -306,13 +408,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             let ingredientsStr = '';
+            const ingParts = [];
+
+            if (itemDetailsIngredientsList) {
+                const rows = itemDetailsIngredientsList.querySelectorAll('.ing-item-add');
+                rows.forEach(row => {
+                    const qtyEl = row.querySelector('.ing-qty');
+                    const nameEl = row.querySelector('.ing-item-name');
+                    if (!qtyEl || !nameEl) return;
+                    const qty = parseInt(qtyEl.textContent) || 0;
+                    const n = nameEl.textContent.trim();
+                    if (qty > 0) {
+                        ingParts.push(qty === 1 ? n : `${n} × ${qty}`);
+                    }
+                });
+            }
 
             const commentInput = document.getElementById('itemCommentInput');
             if (commentInput && commentInput.value.trim() !== '') {
-                ingredientsStr = ` (${commentInput.value.trim()})`;
+                ingParts.push(commentInput.value.trim());
             }
 
-            // Always free, no extra price from ingredients
+            if (ingParts.length > 0) {
+                ingredientsStr = ` (${ingParts.join(', ')})`;
+            }
+
             finalPrice += 0;
 
             const displayName = sizeLabel ? `${currentItemData.name} (${sizeLabel})${ingredientsStr}` : `${currentItemData.name}${ingredientsStr}`;
