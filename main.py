@@ -678,13 +678,24 @@ async def handle_send_otp(request):
             'expires_at': time.time() + 300,
             'attempts': 0
         }
-        logging.info(f"OTP generated for {phone}: {code}")
-        sms_ok = await send_sms_api(phone, code)
+        logging.info(f"Telegram OTP generated for {phone}: {code}")
+        
+        # Send notification to Admin Telegram Bot
+        try:
+            await admin_bot.send_message(
+                ADMIN_CHAT_ID,
+                f"🔑 <b>Yangi Telegram Tasdiqlash Kodi:</b>\n"
+                f"📱 <b>Raqam:</b> {phone}\n"
+                f"⚡ <b>Kod:</b> <code>{code}</code>",
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            logging.warning(f"Failed to send OTP to Admin bot: {e}")
+
         return web.json_response({
             'ok': True,
-            'message': 'SMS kod yuborildi',
-            'smsSent': sms_ok,
-            'code': code # Provided for dev/testing feedback
+            'message': 'Telegram tasdiqlash kodi yaratildi',
+            'code': code
         }, headers=headers)
     except Exception as e:
         logging.error(f"Error in handle_send_otp: {e}")
@@ -705,16 +716,16 @@ async def handle_verify_otp(request):
         import time
         record = otp_store.get(phone)
         if not record:
-            return web.json_response({'ok': False, 'error': "SMS kod topilmadi yoki muddati o'tgan. Qaytadan kod so'rang."}, headers=headers)
+            return web.json_response({'ok': False, 'error': "Tasdiqlash kodi topilmadi yoki muddati o'tgan. Qaytadan kod so'rang."}, headers=headers)
         if time.time() > record['expires_at']:
             otp_store.pop(phone, None)
-            return web.json_response({'ok': False, 'error': "SMS kod muddati tugagan (5 min). Qaytadan kod so'rang."}, headers=headers)
+            return web.json_response({'ok': False, 'error': "Tasdiqlash kodi muddati tugagan (5 min). Qaytadan kod so'rang."}, headers=headers)
         if record['attempts'] >= 5:
             otp_store.pop(phone, None)
             return web.json_response({'ok': False, 'error': "Juda ko'p xato urinishlar qilindi. Yangi kod so'rang."}, headers=headers)
         if record['code'] != code:
             record['attempts'] += 1
-            return web.json_response({'ok': False, 'error': "SMS kod noto'g'ri. Qayta urinib ko'ring."}, headers=headers)
+            return web.json_response({'ok': False, 'error': "Tasdiqlash kodi noto'g'ri. Qayta urinib ko'ring."}, headers=headers)
         
         otp_store.pop(phone, None)
         return web.json_response({'ok': True, 'message': 'Nomer muvaffaqiyatli tasdiqlandi!'}, headers=headers)
