@@ -153,7 +153,6 @@ def get_user_data(chat_id: int) -> Dict[str, Any]:
 class Registration(StatesGroup):
     waiting_for_phone = State()
     waiting_for_name = State()
-    waiting_for_location = State()
 
 products = {
     'burgers': [
@@ -284,35 +283,6 @@ async def process_name(message: types.Message, state: FSMContext):
         return
 
     save_user_data(message.chat.id, 'name', message.text.strip())
-    await state.set_state(Registration.waiting_for_location)
-
-    location_keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📍 Geolokatsiyani yuborish", request_location=True)]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-    await message.answer(
-        "Iltimos, '📍 Geolokatsiyani yuborish' tugmasini bosish orqali geolokatsiyangizni yuboring. Telefoningizda manzilni aniqlash funksiyasi yoqilgan bo'lishi kerak.",
-        reply_markup=location_keyboard
-    )
-
-@dp.message(Registration.waiting_for_location)
-async def process_location(message: types.Message, state: FSMContext):
-    if message.location:
-        lat = message.location.latitude
-        lon = message.location.longitude
-        loc_data = {
-            'lat': lat,
-            'lon': lon,
-            'maps_url': f"https://maps.google.com/?q={lat},{lon}"
-        }
-        save_user_data(message.chat.id, 'location', loc_data)
-    elif message.text:
-        save_user_data(message.chat.id, 'location', message.text.strip())
-    else:
-        await message.answer("Iltimos, geolokatsiyangizni yuboring.")
-        return
-
     await state.clear()
     await message.answer(
         "✅ Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!",
