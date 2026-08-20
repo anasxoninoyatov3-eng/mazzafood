@@ -6,8 +6,10 @@ import json
 from typing import Dict, Any
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 from aiohttp import web
 import urllib.parse
 from datetime import datetime
@@ -57,6 +59,11 @@ if not os.path.exists(REVIEWS_FILE):
     with open(REVIEWS_FILE, 'w') as f:
         json.dump([], f)
 
+USERS_FILE = 'users.json'
+if not os.path.exists(USERS_FILE):
+    with open(USERS_FILE, 'w') as f:
+        json.dump({}, f)
+
 def load_reviews():
     with open(REVIEWS_FILE, 'r') as f:
         return json.load(f)
@@ -64,6 +71,31 @@ def load_reviews():
 def save_reviews(reviews):
     with open(REVIEWS_FILE, 'w') as f:
         json.dump(reviews, f)
+
+def load_users() -> Dict[str, Dict[str, Any]]:
+    try:
+        with open(USERS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def save_user_data(chat_id: int, key: str, value: Any):
+    users = load_users()
+    str_id = str(chat_id)
+    if str_id not in users:
+        users[str_id] = {}
+    users[str_id][key] = value
+    with open(USERS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(users, f, indent=2, ensure_ascii=False)
+
+def get_user_data(chat_id: int) -> Dict[str, Any]:
+    users = load_users()
+    return users.get(str(chat_id), {})
+
+class Registration(StatesGroup):
+    waiting_for_phone = State()
+    waiting_for_name = State()
+    waiting_for_location = State()
 
 products = {
     'burgers': [
@@ -129,7 +161,78 @@ def get_categories_menu():
     return builder.as_markup()
 
 @dp.message(CommandStart())
-async def command_start_handler(message: types.Message):
+async def command_start_handler(message: types.Message, state: FSMContext):
+    phone_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await message.answer(
+        "Ro'yxatdan o'tish uchun telefon\nraqamingizni kiring.\nRaqamni +************* shaklida yuboring.",
+        reply_markup=phone_keyboard
+    )
+    await state.set_state(Registration.waiting_for_phone)
+
+@dp.message(Registration.waiting_for_phone)
+async def process_phone(message: types.Message, state: FSMContext):
+    if message.contact:
+        phone = message.contact.phone_number
+        if not phone.startswith('+'):
+            phone = '+' + phone
+    elif message.text:
+        phone = message.text.strip()
+    else:
+        await message.answer("Iltimos, telefon raqamingizni yuboring.")
+        return
+
+    save_user_data(message.chat.id, 'phone', phone)
+    await state.set_state(Registration.waiting_for_name)
+    await message.answer(
+        "Biz sizga kim deb murojat qilsak bo'ladi ?\nIsmingizni yuboring\n\nMasalan: Sardor",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+@dp.message(Registration.waiting_for_name)
+async def process_name(message: types.Message, state: FSMContext):
+    if not message.text:
+        await message.answer("Iltimos, ismingizni matn ko'rinishida yuboring.")
+        return
+
+    save_user_data(message.chat.id, 'name', message.text.strip())
+    await state.set_state(Registration.waiting_for_location)
+
+    location_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📍 Geolokatsiyani yuborish", request_location=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await message.answer(
+        "Iltimos, '📍 Geolokatsiyani yuborish' tugmasini bosish orqali geolokatsiyangizni yuboring. Telefoningizda manzilni aniqlash funksiyasi yoqilgan bo'lishi kerak.",
+        reply_markup=location_keyboard
+    )
+
+@dp.message(Registration.waiting_for_location)
+async def process_location(message: types.Message, state: FSMContext):
+    if message.location:
+        lat = message.location.latitude
+        lon = message.location.longitude
+        loc_data = {
+            'lat': lat,
+            'lon': lon,
+            'maps_url': f"https://maps.google.com/?q={lat},{lon}"
+        }
+        save_user_data(message.chat.id, 'location', loc_data)
+    elif message.text:
+        save_user_data(message.chat.id, 'location', message.text.strip())
+    else:
+        await message.answer("Iltimos, geolokatsiyangizni yuboring.")
+        return
+
+    await state.clear()
+    await message.answer(
+        "✅ Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!",
+        reply_markup=ReplyKeyboardRemove()
+    )
     await message.answer_photo(
         photo='https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=1965',
         caption="🍔 *Mazza Foodga xush kelibsiz!*\n\nMenyuni ochish uchun tugmani bosing:",
@@ -194,6 +297,16 @@ async def command_id_handler(message: types.Message):
 @dp.callback_query(F.data == 'show_categories')
 async def show_categories(query: CallbackQuery):
     await query.message.answer("😋 *Kategoriyani tanlang:*", parse_mode='Markdown', reply_markup=get_categories_menu())
+    await query.answer()
+
+@dp.callback_query(F.data == 'back_start')
+async def back_start(query: CallbackQuery):
+    await query.message.answer_photo(
+        photo='https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=1965',
+        caption="🍔 *Mazza Foodga xush kelibsiz!*\n\nMenyuni ochish uchun tugmani bosing:",
+        parse_mode='Markdown',
+        reply_markup=get_start_menu()
+    )
     await query.answer()
 
 @dp.callback_query(F.data.startswith('cat_'))
@@ -269,10 +382,24 @@ async def finish_order(query: CallbackQuery):
     # Xavfsiz ism va username
     full_name = str(query.from_user.full_name).replace('<', '').replace('>', '')
     username = str(query.from_user.username).replace('<', '').replace('>', '')
-    order_text += f"<b>Xaridor:</b> {full_name} (@{username})"
+    order_text += f"<b>Xaridor:</b> {full_name} (@{username})\n"
+
+    user_info = get_user_data(chat_id)
+    if user_info.get('phone'):
+        order_text += f"📞 <b>Telefon:</b> <code>{user_info['phone']}</code>\n"
+    if user_info.get('name'):
+        order_text += f"👤 <b>Murojaat uchun:</b> {user_info['name']}\n"
+    if user_info.get('location'):
+        loc = user_info['location']
+        if isinstance(loc, dict) and 'maps_url' in loc:
+            order_text += f"📍 <b>Manzil:</b> <a href='{loc['maps_url']}'>Geolokatsiya (Xaritalarda)</a>\n"
+        else:
+            order_text += f"📍 <b>Manzil:</b> {loc}\n"
     
     try:
         await admin_bot.send_message(ADMIN_CHAT_ID, order_text, parse_mode='HTML')
+        if isinstance(user_info.get('location'), dict) and 'lat' in user_info['location']:
+            await admin_bot.send_location(ADMIN_CHAT_ID, latitude=user_info['location']['lat'], longitude=user_info['location']['lon'])
         logging.info("Admin bot successfully sent the order message.")
     except Exception as e:
         logging.error(f"Xabar yuborishda xato: {e}")
