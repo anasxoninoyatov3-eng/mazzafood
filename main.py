@@ -320,6 +320,28 @@ async def command_list_handler(message: types.Message):
 async def command_id_handler(message: types.Message):
     await message.answer(f"Sizning Chat ID: `{message.chat.id}`", parse_mode='Markdown')
 
+@dp.message(Command("sms"))
+async def command_sms_handler(message: types.Message):
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer(
+            "📱 *SMS yuborish uchun:* `/sms +998908527775` shaklida yozing.\n\n"
+            "_Masalan:_ `/sms +998908527775`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    target_phone = args[1]
+    import random
+    test_otp = str(random.randint(1000, 9999))
+    status_msg = await message.answer(f"⏳ `{target_phone}` raqamiga SMS yuborilmoqda...", parse_mode='Markdown')
+    
+    ok = await send_sms_api(target_phone, test_otp)
+    if ok:
+        await status_msg.edit_text(f"✅ *SMS muvaffaqiyatli yuborildi!*\n📱 Raqam: `{target_phone}`\n🔑 Kod: `{test_otp}`", parse_mode='Markdown')
+    else:
+        await status_msg.edit_text(f"❌ *SMS yuborishda xatolik yuz berdi.*", parse_mode='Markdown')
+
 @dp.callback_query(F.data == 'show_categories')
 async def show_categories(query: CallbackQuery):
     await query.message.answer("😋 *Kategoriyani tanlang:*", parse_mode='Markdown', reply_markup=get_categories_menu())
