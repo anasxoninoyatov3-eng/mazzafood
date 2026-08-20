@@ -25,8 +25,14 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
-TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('ADMIN_BOT_TOKEN') or '8633439971:AAFR1WG5SyYnpEuwMVhQMC20LVyYSB4pSjE'
-ADMIN_BOT_TOKEN = os.getenv('ADMIN_BOT_TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN') or '8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE'
+def get_clean_env(key: str, default: str) -> str:
+    val = (os.getenv(key) or '').strip().strip('"').strip("'")
+    if not val or len(val) < 10:
+        return default.strip()
+    return val
+
+TOKEN = get_clean_env('TELEGRAM_BOT_TOKEN', '8633439971:AAFR1WG5SyYnpEuwMVhQMC20LVyYSB4pSjE')
+ADMIN_BOT_TOKEN = get_clean_env('ADMIN_BOT_TOKEN', '8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE')
 ADMIN_CHAT_ID = int(os.getenv('ADMIN_CHAT_ID', '8283401187'))
 SMS_API_KEY = os.getenv('SMS_API_KEY', '')
 ESKIZ_EMAIL = os.getenv('ESKIZ_EMAIL', '')
@@ -107,10 +113,19 @@ async def send_sms_api(phone, otp):
     return False
 
 otp_store: Dict[str, Dict[str, Any]] = {}
-
-bot = Bot(token=TOKEN)
-admin_bot = Bot(token=ADMIN_BOT_TOKEN) 
 dp = Dispatcher()
+
+try:
+    bot = Bot(token=TOKEN)
+except Exception as e:
+    logging.error(f"Bot init error for token '{TOKEN}': {e}. Using default token.")
+    bot = Bot(token='8633439971:AAFR1WG5SyYnpEuwMVhQMC20LVyYSB4pSjE')
+
+try:
+    admin_bot = Bot(token=ADMIN_BOT_TOKEN)
+except Exception as e:
+    logging.error(f"Admin Bot init error for token '{ADMIN_BOT_TOKEN}': {e}. Using default token.")
+    admin_bot = Bot(token='8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE')
 
 REVIEWS_FILE = 'reviews.json'
 if not os.path.exists(REVIEWS_FILE):
