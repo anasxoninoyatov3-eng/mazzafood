@@ -217,25 +217,35 @@ def get_categories_menu():
     builder.row(InlineKeyboardButton(text='🔙 Bosh sahifa', callback_data='back_start'))
     return builder.as_markup()
 
-@dp.message(CommandStart())
-async def command_start_handler(message: types.Message, state: FSMContext):
+async def check_and_send_otp(message: types.Message, phone: str = None) -> bool:
     import time
-    active_code = None
-    active_phone = None
-    for p, rec in list(otp_store.items()):
-        if time.time() < rec.get('expires_at', 0):
-            active_code = rec.get('code')
-            active_phone = p
-            break
+    user_p = phone or get_user_data(message.chat.id).get('phone')
+    rec = None
+    if user_p:
+        clean_p = ''.join(filter(str.isdigit, str(user_p)))
+        rec = otp_store.get('+' + clean_p) or otp_store.get(clean_p)
+    
+    if not rec:
+        for p, r in list(otp_store.items()):
+            if time.time() < r.get('expires_at', 0):
+                rec = r
+                user_p = p
+                break
 
-    if active_code:
+    if rec and time.time() < rec.get('expires_at', 0):
         await message.answer(
-            f"🔑 *Mazza Food Tasdiqlash kodingiz:* `{active_code}`\n\n"
-            f"📱 Raqam: `{active_phone}`\n"
+            f"🔑 *Mazza Food Tasdiqlash kodingiz:* `{rec['code']}`\n\n"
+            f"📱 Raqam: `{user_p}`\n"
             f"⚡ Saytdagi ro'yxatdan o'tish oynasiga ushbu 4-xonali kodni kiriting.",
             parse_mode='Markdown'
         )
+        return True
+    return False
 
+@dp.message(CommandStart())
+async def command_start_handler(message: types.Message, state: FSMContext):
+    has_otp = await check_and_send_otp(message)
+    
     phone_keyboard = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]],
         resize_keyboard=True,
@@ -259,17 +269,9 @@ async def process_phone(message: types.Message, state: FSMContext):
         await message.answer("Iltimos, telefon raqamingizni yuboring.")
         return
 
-    import time
-    clean_p = ''.join(filter(str.isdigit, phone))
-    rec = otp_store.get('+' + clean_p) or otp_store.get(clean_p)
-    if rec and time.time() < rec.get('expires_at', 0):
-        await message.answer(
-            f"🔑 *Sizning Tasdiqlash kodingiz:* `{rec['code']}`\n\n"
-            f"⚡ Saytdagi ro'yxatdan o'tish oynasiga ushbu 4-xonali kodni kiriting.",
-            parse_mode='Markdown'
-        )
-
     save_user_data(message.chat.id, 'phone', phone)
+    await check_and_send_otp(message, phone)
+
     await state.set_state(Registration.waiting_for_name)
     await message.answer(
         "Biz sizga kim deb murojat qilsak bo'ladi ?\nIsmingizni yuboring\n\nMasalan: Sardor",
@@ -278,8 +280,12 @@ async def process_phone(message: types.Message, state: FSMContext):
 
 @dp.message(Registration.waiting_for_name)
 async def process_name(message: types.Message, state: FSMContext):
-    if not message.text:
-        await message.answer("Iltimos, ismingizni matn ko'rinishida yuboring.")
+    txt = (message.text or '').strip().lower()
+    if not message.text or 'kod' in txt or 'code' in txt or txt.isdigit():
+        has_otp = await check_and_send_otp(message)
+        if has_otp:
+            return
+        await message.answer("Iltimos, ismingizni matn ko'rinishida yuboring (Masalan: Sardor).")
         return
 
     save_user_data(message.chat.id, 'name', message.text.strip())
@@ -650,6 +656,23 @@ async def handle_send_otp(request):
         }
         logging.info(f"Telegram OTP generated for {phone}: {code}")
         
+        # Try sending direct Telegram message to user chat if known
+        try:
+            clean_p = ''.join(filter(str.isdigit, phone))
+            users = load_users()
+            for cid, udata in users.items():
+                u_phone = udata.get('phone', '')
+                if u_phone and ''.join(filter(str.isdigit, str(u_phone))) == clean_p:
+                    await bot.send_message(
+                        int(cid),
+                        f"🔑 *Mazza Food Tasdiqlash kodingiz:* `{code}`\n\n"
+                        f"⚡ Saytdagi ro'yxatdan o'tish oynasiga ushbu 4-xonali kodni kiriting.",
+                        parse_mode='Markdown'
+                    )
+                    break
+        except Exception as e:
+            logging.warning(f"Could not send direct bot OTP to user chat: {e}")
+
         # Send notification to Admin Telegram Bot
         try:
             await admin_bot.send_message(
