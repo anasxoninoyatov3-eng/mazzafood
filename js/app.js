@@ -804,24 +804,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!res.ok) {
                     localFallbackOtp = String(Math.floor(1000 + Math.random() * 9000));
-                    
-                    // Local fallback OTP generated
+                }
 
-                    if (authMsg) {
-                        authMsg.style.display = 'block';
-                        authMsg.style.background = '#d1fae5';
-                        authMsg.style.color = '#065f46';
-                        authMsg.style.borderColor = '#6ee7b7';
-                        authMsg.innerHTML = `📲 Tasdiqlash kodi yuborildi!`;
-                    }
-                } else {
-                    if (authMsg) {
-                        authMsg.style.display = 'block';
-                        authMsg.style.background = '#d1fae5';
-                        authMsg.style.color = '#065f46';
-                        authMsg.style.borderColor = '#6ee7b7';
-                        authMsg.innerHTML = `📲 Tasdiqlash kodi yuborildi!`;
-                    }
+                if (authMsg) {
+                    authMsg.style.display = 'block';
+                    authMsg.style.background = '#d1fae5';
+                    authMsg.style.color = '#065f46';
+                    authMsg.style.borderColor = '#6ee7b7';
+                    authMsg.innerHTML = `📲 Tasdiqlash kodi yuborildi! (SMS yoki Telegram-dan olishingiz mumkin)`;
                 }
 
                 // Switch to Step 2 (SMS Verification)
@@ -832,7 +822,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (step1) step1.style.display = 'none';
                 if (step2) step2.style.display = 'block';
-                if (notice) notice.innerHTML = `📲 <strong>${escapeHtml(phone)}</strong> raqamiga yuborilgan 4-xonali SMS kodni kiriting.`;
+                if (notice) notice.innerHTML = `📲 <strong>${escapeHtml(phone)}</strong> raqamiga yuborilgan 4-xonali SMS kodni kiriting.<br><small style="color:#0088cc;font-weight:600;">(SMS kelmasa, pastdagi Telegram tugmasini bosing)</small>`;
                 if (otpInput) { otpInput.value = ''; otpInput.focus(); }
 
                 startResendTimer(60);

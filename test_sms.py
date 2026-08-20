@@ -23,7 +23,7 @@ async def send_sms_smsmobileapi(phone: str, code: str):
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 result = await resp.text()
-                print(f"✅ Javob: {result}")
+                print(f"✅ SMSMobileAPI Javob: {result.strip()}")
                 return True
     except Exception as e:
         print(f"❌ Xatolik: {e}")
@@ -49,6 +49,7 @@ async def send_sms_eskiz(phone: str, code: str):
                 if not token:
                     print(f"❌ Token olishda xatolik: {res_data}")
                     return False
+                print("🔑 Eskiz token olindi")
             
             # 2. Send SMS
             send_url = "https://notify.eskiz.uz/api/message/sms/send"
@@ -60,8 +61,21 @@ async def send_sms_eskiz(phone: str, code: str):
             }
             async with session.post(send_url, headers=headers, data=payload) as resp:
                 send_res = await resp.json()
-                print(f"✅ Eskiz Javob: {send_res}")
-                return send_res.get('status') == 'waiting' or send_res.get('status') == 'success'
+                print(f"✅ Eskiz Javob ({resp.status}): {send_res}")
+                if resp.status == 200 and send_res.get('status') in ['waiting', 'success', 'sended']:
+                    return True
+                
+                # Test payload retry
+                print("🔄 Eskiz test rejimida urunib ko'rilmoqda ('Bu Eskiz dan test')...")
+                test_payload = {
+                    'mobile_phone': clean_phone,
+                    'message': 'Bu Eskiz dan test',
+                    'from': ESKIZ_FROM
+                }
+                async with session.post(send_url, headers=headers, data=test_payload) as t_resp:
+                    t_res = await t_resp.json()
+                    print(f"✅ Eskiz Test Mode Javob ({t_resp.status}): {t_res}")
+                    return t_resp.status == 200
     except Exception as e:
         print(f"❌ Eskiz Xatolik: {e}")
         return False
@@ -75,4 +89,5 @@ if __name__ == "__main__":
     
     print("\n=== SMSMOBILEAPI TESTI ===")
     asyncio.run(send_sms_smsmobileapi(target_phone, test_code))
+
 

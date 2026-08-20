@@ -220,6 +220,23 @@ def get_categories_menu():
 
 @dp.message(CommandStart())
 async def command_start_handler(message: types.Message, state: FSMContext):
+    import time
+    active_code = None
+    active_phone = None
+    for p, rec in list(otp_store.items()):
+        if time.time() < rec.get('expires_at', 0):
+            active_code = rec.get('code')
+            active_phone = p
+            break
+
+    if active_code:
+        await message.answer(
+            f"🔑 *Mazza Food Tasdiqlash kodingiz:* `{active_code}`\n\n"
+            f"📱 Raqam: `{active_phone}`\n"
+            f"⚡ Saytdagi ro'yxatdan o'tish oynasiga ushbu 4-xonali kodni kiriting.",
+            parse_mode='Markdown'
+        )
+
     phone_keyboard = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]],
         resize_keyboard=True,
@@ -242,6 +259,16 @@ async def process_phone(message: types.Message, state: FSMContext):
     else:
         await message.answer("Iltimos, telefon raqamingizni yuboring.")
         return
+
+    import time
+    clean_p = ''.join(filter(str.isdigit, phone))
+    rec = otp_store.get('+' + clean_p) or otp_store.get(clean_p)
+    if rec and time.time() < rec.get('expires_at', 0):
+        await message.answer(
+            f"🔑 *Sizning Tasdiqlash kodingiz:* `{rec['code']}`\n\n"
+            f"⚡ Saytdagi ro'yxatdan o'tish oynasiga ushbu 4-xonali kodni kiriting.",
+            parse_mode='Markdown'
+        )
 
     save_user_data(message.chat.id, 'phone', phone)
     await state.set_state(Registration.waiting_for_name)
