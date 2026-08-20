@@ -9,7 +9,7 @@ load_dotenv()
 SMS_API_KEY = os.getenv('SMS_API_KEY', '')
 ESKIZ_EMAIL = os.getenv('ESKIZ_EMAIL', '')
 ESKIZ_PASSWORD = os.getenv('ESKIZ_PASSWORD', '')
-ESKIZ_FROM = os.getenv('ESKIZ_FROM', '4546')
+ESKIZ_FROM = os.getenv('ESKIZ_FROM', 'MazzaFood')
 
 async def send_sms_smsmobileapi(phone: str, code: str):
     """SMSMobileAPI orqali SMS yuborish"""
@@ -70,5 +70,9 @@ if __name__ == "__main__":
     target_phone = "+998908527775"
     test_code = "4829"
     
-    print("=== SMS YUBORISH TESTI ===")
+    print("=== ESKIZ SMS TESTI ===")
+    asyncio.run(send_sms_eskiz(target_phone, test_code))
+    
+    print("\n=== SMSMOBILEAPI TESTI ===")
     asyncio.run(send_sms_smsmobileapi(target_phone, test_code))
+

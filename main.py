@@ -25,19 +25,19 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
-TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-ADMIN_BOT_TOKEN = os.getenv('ADMIN_BOT_TOKEN', '')
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('ADMIN_BOT_TOKEN') or '8633439971:AAFR1WG5SyYnpEuwMVhQMC20LVyYSB4pSjE'
+ADMIN_BOT_TOKEN = os.getenv('ADMIN_BOT_TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN') or '8429193461:AAEnBiGsVX4hKYVnKYCnI5ZdLvNg7_0jZdE'
 ADMIN_CHAT_ID = int(os.getenv('ADMIN_CHAT_ID', '8283401187'))
 SMS_API_KEY = os.getenv('SMS_API_KEY', '')
 ESKIZ_EMAIL = os.getenv('ESKIZ_EMAIL', '')
 ESKIZ_PASSWORD = os.getenv('ESKIZ_PASSWORD', '')
-ESKIZ_FROM = os.getenv('ESKIZ_FROM', '4546')
+ESKIZ_FROM = os.getenv('ESKIZ_FROM', 'MazzaFood')
 
 async def send_sms_api(phone, otp):
     import aiohttp
     text = f"Mazza Food: Tasdiqlash kodi - {otp}"
     clean_phone = ''.join(filter(str.isdigit, phone))
-    logging.info(f"Sending real SMS to {clean_phone}")
+    logging.info(f"Sending SMS to {clean_phone}")
     
     # 1-Urinish: Eskiz.uz API orqali
     if ESKIZ_EMAIL and ESKIZ_PASSWORD:
@@ -52,27 +52,59 @@ async def send_sms_api(phone, otp):
                     send_url = "https://notify.eskiz.uz/api/message/sms/send"
                     headers = {'Authorization': f'Bearer {token}'}
                     payload = {'mobile_phone': clean_phone, 'message': text, 'from': ESKIZ_FROM}
+                    
                     async with session.post(send_url, headers=headers, data=payload) as resp:
                         send_res = await resp.json()
-                        logging.info(f"Eskiz response: {send_res}")
-                        await admin_bot.send_message(ADMIN_CHAT_ID, f"📱 *SMS (Eskiz) yuborildi ({clean_phone}):*\n{text}", parse_mode='Markdown')
-                        return True
+                        logging.info(f"Eskiz response (status {resp.status}): {send_res}")
+                        
+                        if resp.status == 200 and isinstance(send_res, dict) and send_res.get('status') in ['waiting', 'success', 'sended']:
+                            await admin_bot.send_message(ADMIN_CHAT_ID, f"📱 *SMS (Eskiz) yuborildi ({clean_phone}):*\n{text}", parse_mode='Markdown')
+                            return True
+                        
+                        # Eskiz Test mode check (If account requires test message format)
+                        err_msg = str(send_res.get('message', ''))
+                        if 'Bu Eskiz dan test' in err_msg or resp.status == 400:
+                            logging.warning("Eskiz test rejimida. Test xabari yuborilmoqda...")
+                            test_payload = {'mobile_phone': clean_phone, 'message': 'Bu Eskiz dan test', 'from': ESKIZ_FROM}
+                            async with session.post(send_url, headers=headers, data=test_payload) as t_resp:
+                                t_res = await t_resp.json()
+                                logging.info(f"Eskiz test mode response: {t_res}")
+                                if t_resp.status == 200 and isinstance(t_res, dict) and t_res.get('status') in ['waiting', 'success', 'sended']:
+                                    await admin_bot.send_message(
+                                        ADMIN_CHAT_ID, 
+                                        f"📱 *SMS (Eskiz Test) telefoningizga yuborildi ({clean_phone})!*\n\n⚠️ Eskiz akkauntingiz Test rejimida bo'lgani uchun SMS matni 'Bu Eskiz dan test' deb bordi.\n🔑 *Tasdiqlash kodi:* `{otp}`",
+                                        parse_mode='Markdown'
+                                    )
+                                    return True
         except Exception as e:
             logging.error(f"Eskiz SMS error: {e}")
 
     # 2-Urinish: SMSMobileAPI orqali fallback
     try:
-        encoded_text = urllib.parse.quote(text)
-        url = f"https://api.smsmobileapi.com/sendsms/?recipients={clean_phone}&message={encoded_text}&apikey={SMS_API_KEY}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                resp_text = await resp.text()
-                logging.info(f"SMSMobileAPI response: {resp_text}")
-        await admin_bot.send_message(ADMIN_CHAT_ID, f"📱 *SMS mijozning telefoniga yuborildi ({clean_phone}):*\n{text}\n\nJavob: {resp_text}", parse_mode='Markdown')
-        return True
+        if SMS_API_KEY:
+            encoded_text = urllib.parse.quote(text)
+            url = f"https://api.smsmobileapi.com/sendsms/?recipients={clean_phone}&message={encoded_text}&apikey={SMS_API_KEY}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    resp_text = await resp.text()
+                    logging.info(f"SMSMobileAPI response: {resp_text}")
+                    if "sms_sent" in resp_text and '"sms_sent":1' in resp_text:
+                        await admin_bot.send_message(ADMIN_CHAT_ID, f"📱 *SMS mijozning telefoniga yuborildi ({clean_phone}):*\n{text}", parse_mode='Markdown')
+                        return True
     except Exception as e:
         logging.error(f"Failed to send SMSMobileAPI: {e}")
-        return False
+
+    # Fallback to Admin Bot notification
+    try:
+        await admin_bot.send_message(
+            ADMIN_CHAT_ID, 
+            f"⚠️ *SMS provayder orqali yuborilmadi ({clean_phone})*\n🔑 *Tasdiqlash kodi:* `{otp}`\n\n(Eskiz provayderida balans yetarsiz yoki test rejimida. Kodni shu yerdan olishingiz mumkin)", 
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logging.error(f"Admin bot send code error: {e}")
+
+    return False
 
 otp_store: Dict[str, Dict[str, Any]] = {}
 

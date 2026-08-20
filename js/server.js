@@ -106,17 +106,37 @@ async function sendEskizSms(phone, code) {
         const smsParams = new URLSearchParams();
         smsParams.append('mobile_phone', cleanPhone);
         smsParams.append('message', `Mazza Food: Ro'yxatdan o'tish kodingiz: ${code}`);
-        smsParams.append('from', process.env.ESKIZ_FROM || '4546');
+        smsParams.append('from', process.env.ESKIZ_FROM || 'MazzaFood');
         smsParams.append('callback_url', '');
 
-        const smsRes = await axios.post('https://notify.eskiz.uz/api/message/sms/send', smsParams, {
-            headers: { Authorization: `Bearer ${eskizToken}` }
-        });
-
-        return { ok: true, provider: 'Eskiz', data: smsRes.data };
-    } catch (err) {
-        console.error('Eskiz SMS Exception:', err?.response?.data || err.message);
-        return { ok: false, provider: 'Eskiz', error: err?.response?.data?.message || err.message };
+        try {
+            const smsRes = await axios.post('https://notify.eskiz.uz/api/message/sms/send', smsParams, {
+                headers: { Authorization: `Bearer ${eskizToken}` }
+            });
+            return { ok: true, provider: 'Eskiz', data: smsRes.data };
+        } catch (err) {
+            const errMsg = err?.response?.data?.message || err.message || '';
+            if (errMsg.includes('Bu Eskiz dan test') || err?.response?.status === 400) {
+                console.log('[Eskiz Test Mode detected]: retrying with Eskiz test message template...');
+                const testParams = new URLSearchParams();
+                testParams.append('mobile_phone', cleanPhone);
+                testParams.append('message', 'Bu Eskiz dan test');
+                testParams.append('from', process.env.ESKIZ_FROM || 'MazzaFood');
+                try {
+                    const testRes = await axios.post('https://notify.eskiz.uz/api/message/sms/send', testParams, {
+                        headers: { Authorization: `Bearer ${eskizToken}` }
+                    });
+                    return { ok: true, provider: 'Eskiz (Test Mode)', data: testRes.data };
+                } catch (testErr) {
+                    console.error('Eskiz test mode send error:', testErr?.response?.data || testErr.message);
+                }
+            }
+            console.error('Eskiz SMS Exception:', err?.response?.data || err.message);
+            return { ok: false, provider: 'Eskiz', error: errMsg };
+        }
+    } catch (outerErr) {
+        console.error('Outer Eskiz Exception:', outerErr.message);
+        return { ok: false, provider: 'Eskiz', error: outerErr.message };
     }
 }
 

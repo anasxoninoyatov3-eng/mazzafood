@@ -3,3 +3,5 @@ MazzaFood-win32-x64/
 *.exe
 node_modules/
 .env
+__pycache__/
+*.pyc
