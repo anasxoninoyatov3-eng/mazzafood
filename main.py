@@ -29,23 +29,49 @@ TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 ADMIN_BOT_TOKEN = os.getenv('ADMIN_BOT_TOKEN', '')
 ADMIN_CHAT_ID = int(os.getenv('ADMIN_CHAT_ID', '8283401187'))
 SMS_API_KEY = os.getenv('SMS_API_KEY', '')
+ESKIZ_EMAIL = os.getenv('ESKIZ_EMAIL', '')
+ESKIZ_PASSWORD = os.getenv('ESKIZ_PASSWORD', '')
+ESKIZ_FROM = os.getenv('ESKIZ_FROM', '4546')
 
 async def send_sms_api(phone, otp):
     import aiohttp
     text = f"Mazza Food: Tasdiqlash kodi - {otp}"
     clean_phone = ''.join(filter(str.isdigit, phone))
-    encoded_text = urllib.parse.quote(text)
-    url = f"https://api.smsmobileapi.com/sendsms/?recipients={clean_phone}&message={encoded_text}&apikey={SMS_API_KEY}"
     logging.info(f"Sending real SMS to {clean_phone}")
+    
+    # 1-Urinish: Eskiz.uz API orqali
+    if ESKIZ_EMAIL and ESKIZ_PASSWORD:
+        try:
+            async with aiohttp.ClientSession() as session:
+                login_url = "https://notify.eskiz.uz/api/auth/login"
+                async with session.post(login_url, data={'email': ESKIZ_EMAIL, 'password': ESKIZ_PASSWORD}) as resp:
+                    res_data = await resp.json()
+                    token = res_data.get('data', {}).get('token') if isinstance(res_data, dict) else None
+                
+                if token:
+                    send_url = "https://notify.eskiz.uz/api/message/sms/send"
+                    headers = {'Authorization': f'Bearer {token}'}
+                    payload = {'mobile_phone': clean_phone, 'message': text, 'from': ESKIZ_FROM}
+                    async with session.post(send_url, headers=headers, data=payload) as resp:
+                        send_res = await resp.json()
+                        logging.info(f"Eskiz response: {send_res}")
+                        await admin_bot.send_message(ADMIN_CHAT_ID, f"📱 *SMS (Eskiz) yuborildi ({clean_phone}):*\n{text}", parse_mode='Markdown')
+                        return True
+        except Exception as e:
+            logging.error(f"Eskiz SMS error: {e}")
+
+    # 2-Urinish: SMSMobileAPI orqali fallback
     try:
+        encoded_text = urllib.parse.quote(text)
+        url = f"https://api.smsmobileapi.com/sendsms/?recipients={clean_phone}&message={encoded_text}&apikey={SMS_API_KEY}"
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 resp_text = await resp.text()
-                logging.info(f"SMS API response: {resp_text}")
+                logging.info(f"SMSMobileAPI response: {resp_text}")
         await admin_bot.send_message(ADMIN_CHAT_ID, f"📱 *SMS mijozning telefoniga yuborildi ({clean_phone}):*\n{text}\n\nJavob: {resp_text}", parse_mode='Markdown')
         return True
     except Exception as e:
-        logging.error(f"Failed to send SMS: {e}")
+        logging.error(f"Failed to send SMSMobileAPI: {e}")
         return False
 
 otp_store: Dict[str, Dict[str, Any]] = {}
